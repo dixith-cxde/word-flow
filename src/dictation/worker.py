@@ -31,10 +31,7 @@ def create_recognizer(model_dir: str, num_threads: int):
 
 
 def serve(sock_path: str, recognizer, idle_timeout: float) -> None:
-    if os.path.exists(sock_path):
-        os.unlink(sock_path)
-    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    srv.bind(sock_path)
+    srv = proto.bind_unix_socket(sock_path)
     srv.listen(1)
     srv.settimeout(idle_timeout)
     while True:
@@ -46,7 +43,7 @@ def serve(sock_path: str, recognizer, idle_timeout: float) -> None:
             f = conn.makefile("rwb")
             try:
                 pcm = proto.read_frame(f)
-            except EOFError:
+            except (EOFError, ValueError):
                 continue
             samples = np.frombuffer(pcm, dtype=np.float32)
             stream = recognizer.create_stream()

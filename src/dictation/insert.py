@@ -19,8 +19,7 @@ def build_wtype_cmd(text: str) -> list[str]:
     return [WTYPE, "-"]
 
 
-def build_clipboard_cmds(text: str) -> tuple[list[str], list[str]]:
-    _ = text
+def build_clipboard_cmds() -> tuple[list[str], list[str]]:
     copy = [WL_COPY, "--trim-newline"]
     paste = [HYPRCTL, "dispatch", "sendshortcut", "CTRL,V,"]
     return copy, paste
@@ -43,7 +42,7 @@ def insert(text: str, backend: str = "auto") -> str:
         subprocess.run(build_wtype_cmd(text), input=text.encode(), check=True, timeout=10)
         return "wtype"
     if backend == "clipboard":
-        copy, paste = build_clipboard_cmds(text)
+        copy, paste = build_clipboard_cmds()
         subprocess.run(copy, input=text.encode(), check=True, timeout=10)
         subprocess.run(paste, check=True, timeout=10)
         return "clipboard"

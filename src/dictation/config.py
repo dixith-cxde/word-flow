@@ -7,7 +7,6 @@ from pathlib import Path
 DEFAULTS: dict = {
     "socket": "$XDG_RUNTIME_DIR/voxd.sock",
     "model_dir": "models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
-    "vad_model": "models/silero_vad.onnx",
     "worker_idle_timeout": 25,  # seconds warm after last use, then worker exits
     "num_threads": 4,
     "insert_backend": "auto",  # auto | wtype | clipboard

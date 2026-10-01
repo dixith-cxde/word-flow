@@ -38,6 +38,18 @@ Sample: bundled `test_wavs/en.wav` (3.85 s, resampled 24 kHz → 16 kHz in-runti
   pressure (9.3/15 GB used); all runs since (7.6/15 GB) report 24–28 MB stably via both
   `ru_maxrss` and `/proc` VmHWM. Treating 24–28 MB as the number; will re-check if pressure recurs.
 
+## Live service (Phase 2, 2026-10-01)
+
+- Daemon (`voxd`, stdlib only) + warm worker: ~934 MB cgroup total
+  (worker ~810 MB RSS, daemon the rest). Worker status `warm` within 60 s of use.
+- After `worker_idle_timeout` (default 60 s) the worker exits; only the ~12–28 MB
+  listener remains at 0% CPU (blocking socket read). Confirm with
+  `systemctl --user show voxd.service -p MemoryCurrent` after a minute idle.
+- Budget reading: the <30 MB idle budget is met in the unloaded state; the 60 s warm
+  window trades ~800 MB for zero cold-load latency on the next utterance. Lower
+  `worker_idle_timeout` in `~/.config/voxd/config.toml` to shrink the window at the
+  cost of more 2 s cold loads.
+
 ## Pending (needs mic access + read-aloud script)
 
 - End-of-audio → text for 10 s and 30 s utterances; WER on technical text;

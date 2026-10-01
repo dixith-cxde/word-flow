@@ -51,6 +51,20 @@ def _worker_sock_path(cfg: dict) -> str:
     return cfg["socket"] + ".worker"
 
 
+def _reap(proc, thread, timeout: float = 10) -> None:
+    """Wait out a terminated child and its drain thread: no zombies, no leaked fds."""
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            pass
+    if thread is not None:
+        thread.join(timeout=timeout)
+
+
 def _ensure_worker(cfg: dict, state: dict) -> None:
     proc = state.get("worker_proc")
     if proc is not None and proc.poll() is None and os.path.exists(_worker_sock_path(cfg)):
@@ -94,16 +108,30 @@ def _ensure_worker(cfg: dict, state: dict) -> None:
 
 
 def _transcribe(cfg: dict, state: dict, pcm: bytes) -> tuple[str, float]:
-    _ensure_worker(cfg, state)
-    t0 = time.perf_counter()
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    with s:
-        s.connect(_worker_sock_path(cfg))
-        f = s.makefile("rwb")
-        f.write(proto.pack_pcm(pcm))
-        f.flush()
-        text = proto.read_frame(f).decode()
-    return text, time.perf_counter() - t0
+    """Decode via the worker, with one reconnect-and-retry on transport errors.
+
+    The worker can die between the liveness check and connect(); retry once
+    against a freshly spawned worker before giving up loudly (never silently).
+    """
+    last: Exception | None = None
+    for _ in range(2):
+        try:
+            _ensure_worker(cfg, state)
+            t0 = time.perf_counter()
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            with s:
+                s.connect(_worker_sock_path(cfg))
+                f = s.makefile("rwb")
+                f.write(proto.pack_pcm(pcm))
+                f.flush()
+                text = proto.read_frame(f).decode()
+            return text, time.perf_counter() - t0
+        except OSError as e:
+            last = e
+            wproc = state.pop("worker_proc", None)
+            if wproc is not None and wproc.poll() is None:
+                wproc.terminate()
+    raise RuntimeError(f"transcribe-failed: {last}")
 
 
 def _handle(cfg: dict, state: dict, req: dict) -> dict:
@@ -134,18 +162,17 @@ def _handle(cfg: dict, state: dict, req: dict) -> dict:
             proc = state.pop("recorder", None)
             chunks = state.pop("rec_chunks", [])
             thread = state.pop("rec_thread", None)
-        if proc is None or (proc.poll() is not None and not chunks):
-            if proc is not None:
-                proc.wait()
+        if proc is None:
             return {"ok": False, "error": "not recording"}
-        proc.terminate()
-        if thread is not None:
-            thread.join(timeout=10)
         if proc.poll() is None:
-            proc.kill()
-            if thread is not None:
-                thread.join(timeout=10)
-        proc.wait()
+            proc.terminate()
+        _reap(proc, thread)
+        if proc.returncode not in (-signal.SIGTERM, -signal.SIGINT):
+            return {
+                "ok": False,
+                "error": f"recorder failed (exit {proc.returncode}); "
+                "see journal for RECORDER_ERROR",
+            }
         pcm = b"".join(chunks)
         dur_s = len(pcm) / 4 / proto.SAMPLE_RATE
         if len(pcm) > proto.MAX_PCM_BYTES:
@@ -212,12 +239,18 @@ def run(sock_path: str, cfg: dict) -> int:
     except KeyboardInterrupt:
         pass
     finally:
-        rec = state.pop("recorder", None)
-        if rec is not None and rec.poll() is None:
-            rec.terminate()
-        wproc = state.pop("worker_proc", None)
-        if wproc is not None and wproc.poll() is None:
-            wproc.terminate()
+        with state["lock"]:
+            rec = state.pop("recorder", None)
+            thread = state.pop("rec_thread", None)
+            wproc = state.pop("worker_proc", None)
+        if rec is not None:
+            if rec.poll() is None:
+                rec.terminate()
+            _reap(rec, thread)
+        if wproc is not None:
+            if wproc.poll() is None:
+                wproc.terminate()
+            _reap(wproc, None)
         srv.close()
         for p in (sock_path, sock_path + ".worker"):
             if os.path.exists(p):

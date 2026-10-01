@@ -30,13 +30,18 @@ def main() -> int:
 
     out = sys.stdout.buffer
     block = int(args.sample_rate * args.block_ms / 1000)
-    with sd.InputStream(channels=1, dtype="float32", samplerate=args.sample_rate) as s:
-        while not stop:
-            data, overflow = s.read(block)
-            if overflow:
-                print("recorder: input overflow, dropping", file=sys.stderr)
-            out.write(np.asarray(data).reshape(-1).tobytes())
-    out.flush()
+    try:
+        with sd.InputStream(channels=1, dtype="float32", samplerate=args.sample_rate) as s:
+            while not stop:
+                data, overflow = s.read(block)
+                if overflow:
+                    print("recorder: input overflow, dropping", file=sys.stderr)
+                out.write(np.asarray(data).reshape(-1).tobytes())
+    except Exception as e:  # mic missing/unplugged: say so, don't emit silence
+        print(f"RECORDER_ERROR: {e}", file=sys.stderr)
+        return 2
+    finally:
+        out.flush()
     return 0
 
 

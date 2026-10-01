@@ -33,5 +33,8 @@ def load(path: Path | None = None) -> dict:
         for k, v in user.items():
             cfg[k] = _expand(v)
     if "XDG_RUNTIME_DIR" not in os.environ and path == CONFIG_PATH:
-        cfg["socket"] = "/tmp/voxd-%d.sock" % os.getuid()
+        # Systemd user units always set XDG_RUNTIME_DIR, but bare contexts
+        # (e.g. a compositor exec without the session env) may not. Prefer the
+        # standard per-user runtime dir over /tmp so client and daemon agree.
+        cfg["socket"] = "/run/user/%d/voxd.sock" % os.getuid()
     return cfg

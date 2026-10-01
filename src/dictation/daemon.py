@@ -13,6 +13,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -24,12 +25,26 @@ HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parent.parent  # src/dictation -> repo root
 
 
-def _spawn_recorder() -> subprocess.Popen:
-    return subprocess.Popen(
+def _drain_to_chunks(stream, chunks: list) -> None:
+    """Copy a pipe to chunks until EOF. Runs in a thread while recording, so a
+    full 64 KB pipe can never stall the recorder and drop mic audio."""
+    while True:
+        data = stream.read(65536)
+        if not data:
+            break
+        chunks.append(data)
+
+
+def _spawn_recorder() -> tuple:
+    proc = subprocess.Popen(
         [sys.executable, str(HERE / "recorder.py"), "--sample-rate", str(proto.SAMPLE_RATE)],
         stdout=subprocess.PIPE,
         stdin=subprocess.DEVNULL,
     )
+    chunks: list = []
+    thread = threading.Thread(target=_drain_to_chunks, args=(proc.stdout, chunks))
+    thread.start()
+    return proc, chunks, thread
 
 
 def _worker_sock_path(cfg: dict) -> str:
@@ -107,20 +122,28 @@ def _handle(cfg: dict, state: dict, req: dict) -> dict:
         rec = state.get("recorder")
         if rec is not None and rec.poll() is None:
             return {"ok": False, "error": "already recording"}
-        state["recorder"] = _spawn_recorder()
+        proc, chunks, thread = _spawn_recorder()
+        state["recorder"] = proc
+        state["rec_chunks"] = chunks
+        state["rec_thread"] = thread
         return {"ok": True}
     if cmd == "stop":
-        rec = state.pop("recorder", None)
-        if rec is None or rec.poll() is not None:
-            if rec is not None:
-                rec.wait()
+        proc = state.pop("recorder", None)
+        chunks = state.pop("rec_chunks", [])
+        thread = state.pop("rec_thread", None)
+        if proc is None or (proc.poll() is not None and not chunks):
+            if proc is not None:
+                proc.wait()
             return {"ok": False, "error": "not recording"}
-        rec.terminate()
-        try:
-            pcm, _ = rec.communicate(timeout=10)
-        except subprocess.TimeoutExpired:
-            rec.kill()
-            pcm, _ = rec.communicate()
+        proc.terminate()
+        if thread is not None:
+            thread.join(timeout=10)
+        if proc.poll() is None:
+            proc.kill()
+            if thread is not None:
+                thread.join(timeout=10)
+        proc.wait()
+        pcm = b"".join(chunks)
         if not pcm:
             return {"ok": False, "error": "no audio captured"}
         text, decode_s = _transcribe(cfg, state, pcm)

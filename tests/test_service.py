@@ -1,13 +1,16 @@
 """Tests for wire protocol framing, insertion command builders, config merge."""
 
 import io
+import os
 import socket
+import threading
 
 import pytest
 
 from dictation import config as config_mod
 from dictation import insert as insert_mod
 from dictation import protocol as proto
+from dictation.daemon import _drain_to_chunks
 
 
 def test_control_round_trip():
@@ -40,6 +43,21 @@ def test_builders_do_not_contain_text_in_argv():
 
 def test_available_returns_known_backend():
     assert insert_mod.available() in ("wtype", "clipboard", "none")
+
+
+def test_drain_keeps_up_with_producer():
+    # The recorder writes continuously; the daemon must drain concurrently or
+    # the 64 KB pipe stalls and mic audio is dropped (truncated transcripts).
+    r, w = os.pipe()
+    chunks: list = []
+    t = threading.Thread(target=_drain_to_chunks, args=(os.fdopen(r, "rb"), chunks))
+    t.start()
+    with os.fdopen(w, "wb") as f:
+        for _ in range(100):
+            f.write(b"\x00" * 8192)  # 800 KB total, far past the pipe buffer
+    t.join(timeout=10)
+    assert not t.is_alive()
+    assert b"".join(chunks) == b"\x00" * (100 * 8192)
 
 
 def test_config_defaults_and_override(tmp_path):

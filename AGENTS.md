@@ -21,6 +21,7 @@ Pre-scaffold: no stack, code, or commands. No installs, downloads, recording, or
 # Commands
 
 - Setup: `uv venv .venv && uv pip install -e ".[dev]"`
+- Install (home dir + service + keybind): `./install.sh [--key KEY] [--with-models]`
 - Test: `.venv/bin/python -m pytest -q`
 - Lint: `.venv/bin/ruff check src tests prototype`
 - Format: `.venv/bin/ruff format src tests prototype` (CI checks `--check`)

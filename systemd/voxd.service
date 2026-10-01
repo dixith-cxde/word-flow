@@ -9,7 +9,7 @@ Type=simple
 #   mkdir -p ~/.config/systemd/user
 #   cp systemd/voxd.service ~/.config/systemd/user/
 #   systemctl --user daemon-reload && systemctl --user enable --now voxd.service
-ExecStart=%h/coding/fullstack/vibe-blog/.venv/bin/voxd
+ExecStart=%h/.local/bin/voxd
 Restart=on-failure
 RestartSec=2
 # The daemon itself idles at ~12 MB / 0% CPU; the model worker exits on timeout.

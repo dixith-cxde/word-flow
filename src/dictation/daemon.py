@@ -109,28 +109,31 @@ def _transcribe(cfg: dict, state: dict, pcm: bytes) -> tuple[str, float]:
 def _handle(cfg: dict, state: dict, req: dict) -> dict:
     cmd = req.get("cmd")
     if cmd == "status":
-        rec = state.get("recorder")
-        alive = rec is not None and rec.poll() is None
-        wproc = state.get("worker_proc")
-        warm = wproc is not None and wproc.poll() is None
+        with state["lock"]:
+            rec = state.get("recorder")
+            alive = rec is not None and rec.poll() is None
+            wproc = state.get("worker_proc")
+            warm = wproc is not None and wproc.poll() is None
         return {
             "ok": True,
             "state": "recording" if alive else "idle",
             "worker": "warm" if warm else "cold",
         }
     if cmd == "start":
-        rec = state.get("recorder")
-        if rec is not None and rec.poll() is None:
-            return {"ok": False, "error": "already recording"}
-        proc, chunks, thread = _spawn_recorder()
-        state["recorder"] = proc
-        state["rec_chunks"] = chunks
-        state["rec_thread"] = thread
+        with state["lock"]:
+            rec = state.get("recorder")
+            if rec is not None and rec.poll() is None:
+                return {"ok": False, "error": "already recording"}
+            proc, chunks, thread = _spawn_recorder()
+            state["recorder"] = proc
+            state["rec_chunks"] = chunks
+            state["rec_thread"] = thread
         return {"ok": True}
     if cmd == "stop":
-        proc = state.pop("recorder", None)
-        chunks = state.pop("rec_chunks", [])
-        thread = state.pop("rec_thread", None)
+        with state["lock"]:
+            proc = state.pop("recorder", None)
+            chunks = state.pop("rec_chunks", [])
+            thread = state.pop("rec_thread", None)
         if proc is None or (proc.poll() is not None and not chunks):
             if proc is not None:
                 proc.wait()
@@ -144,6 +147,12 @@ def _handle(cfg: dict, state: dict, req: dict) -> dict:
                 thread.join(timeout=10)
         proc.wait()
         pcm = b"".join(chunks)
+        dur_s = len(pcm) / 4 / proto.SAMPLE_RATE
+        if len(pcm) > proto.MAX_PCM_BYTES:
+            return {
+                "ok": False,
+                "error": f"utterance too long ({dur_s:.0f}s > {proto.MAX_UTTERANCE_S}s), discarded",
+            }
         if not pcm:
             return {"ok": False, "error": "no audio captured"}
         text, decode_s = _transcribe(cfg, state, pcm)
@@ -163,39 +172,43 @@ def _handle(cfg: dict, state: dict, req: dict) -> dict:
     return {"ok": False, "error": f"unknown cmd: {cmd}"}
 
 
+def _serve_conn(conn, cfg: dict, state: dict) -> None:
+    # One thread per connection: slow work (transcribe/insert) here never blocks
+    # the accept loop, so status/start stay responsive mid-transcription.
+    # Recorder control inside _handle takes state["lock"]; the slow tail runs free.
+    with conn:
+        f = conn.makefile("rwb")
+        line = f.readline()
+        if not line:
+            return
+        try:
+            req = proto.recv_json(line)
+        except ValueError:
+            resp = {"ok": False, "error": "bad json"}
+        else:
+            try:
+                resp = _handle(cfg, state, req)
+            except Exception as e:
+                resp = {"ok": False, "error": str(e)}
+        f.write((json.dumps(resp) + "\n").encode())
+        f.flush()
+
+
 def run(sock_path: str, cfg: dict) -> int:
-    if os.path.exists(sock_path):
-        os.unlink(sock_path)
-    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    srv.bind(sock_path)
+    try:
+        srv = proto.bind_unix_socket(sock_path)
+    except RuntimeError as e:
+        print(f"voxd: {e}", flush=True)
+        return 1
     srv.listen(8)
-    state: dict = {}
+    state: dict = {"lock": threading.Lock()}
     print(f"voxd listening on {sock_path}", flush=True)
-
-    def _stop(signum, frame):
-        raise KeyboardInterrupt
-
-    signal.signal(signal.SIGTERM, _stop)
-    signal.signal(signal.SIGINT, _stop)
     try:
         while True:
             conn, _ = srv.accept()
-            with conn:
-                f = conn.makefile("rwb")
-                line = f.readline()
-                if not line:
-                    continue
-                try:
-                    req = proto.recv_json(line)
-                except ValueError:
-                    resp = {"ok": False, "error": "bad json"}
-                else:
-                    try:
-                        resp = _handle(cfg, state, req)
-                    except Exception as e:
-                        resp = {"ok": False, "error": str(e)}
-                f.write((json.dumps(resp) + "\n").encode())
-                f.flush()
+            t = threading.Thread(target=_serve_conn, args=(conn, cfg, state))
+            t.daemon = True
+            t.start()
     except KeyboardInterrupt:
         pass
     finally:
@@ -217,6 +230,14 @@ def main() -> int:
     ap.add_argument("--config", default=None)
     args = ap.parse_args()
     cfg = config_mod.load(Path(args.config).expanduser() if args.config else None)
+
+    def _stop(signum, frame):
+        raise KeyboardInterrupt
+
+    # Process-global signal state belongs in the entry point, not run(), so run()
+    # stays callable from any thread (tests run it in a background thread).
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
     return run(cfg["socket"], cfg)
 
 

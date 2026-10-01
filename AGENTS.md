@@ -18,4 +18,13 @@ Pre-scaffold: no stack, code, or commands. No installs, downloads, recording, or
 - Never invent SDK/CLI APIs; verify against installed docs. Ask before installing, downloading, or recording.
 - No audio/transcript logging by default (may contain secrets); never print `.env`.
 - Pin versions; one-line justification per dependency. Small changes, checkpoint commit per step. Choices → `docs/decisions/NNNN-title.md`. Never edit tests to pass.
-- No commands exist yet; do not invent them. Fill in after scaffold. Done = build/lint/tests pass, diff scoped, new behavior tested, benchmarks re-run if perf-relevant.
+# Commands
+
+- Setup: `uv venv .venv && uv pip install -e ".[dev]"`
+- Test: `.venv/bin/python -m pytest -q`
+- Lint: `.venv/bin/ruff check src tests prototype`
+- Format: `.venv/bin/ruff format src tests prototype` (CI checks `--check`)
+- Hooks: `.venv/bin/pre-commit run --all-files` (whitespace, private-key scan, ruff)
+- Spike: `.venv/bin/python prototype/mic_spike.py --file <wav>` |
+  `--mic` (interactive Enter start/stop) | `--mic-secs N`
+- Done = build/lint/tests pass, diff scoped, new behavior tested, benchmarks re-run if perf-relevant.

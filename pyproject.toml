@@ -16,6 +16,10 @@ dev = [
     "pre-commit==4.6.2", # hooks: whitespace, private-key scan, ruff
 ]
 
+[project.scripts]
+vox = "dictation.client:main"
+voxd = "dictation.daemon:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

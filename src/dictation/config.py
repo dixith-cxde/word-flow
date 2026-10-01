@@ -1,6 +1,7 @@
 """Configuration: ~/.config/voxd/config.toml over baked-in defaults (pure merge)."""
 
 import os
+import sys
 import tomllib
 from pathlib import Path
 
@@ -13,6 +14,8 @@ DEFAULTS: dict = {
     "dictionary": {},
     "snippets": {},
 }
+
+PATH_KEYS = {"socket", "model_dir"}
 
 CONFIG_PATH = Path("~/.config/voxd/config.toml").expanduser()
 
@@ -30,7 +33,19 @@ def load(path: Path | None = None) -> dict:
         with open(path, "rb") as f:
             user = tomllib.load(f)
         for k, v in user.items():
-            cfg[k] = _expand(v)
+            if k not in DEFAULTS:
+                print(f"voxd config: unknown key {k!r}, ignoring", file=sys.stderr)
+                continue
+            cfg[k] = _expand(v) if k in PATH_KEYS else v
+    if not isinstance(cfg["num_threads"], int) or cfg["num_threads"] < 1:
+        raise ValueError(
+            f"voxd config: num_threads must be a positive int, got {cfg['num_threads']!r}"
+        )
+    timeout = cfg["worker_idle_timeout"]
+    if not isinstance(timeout, (int, float)) or timeout <= 0:
+        raise ValueError(f"voxd config: worker_idle_timeout must be positive, got {timeout!r}")
+    if cfg["insert_backend"] not in ("auto", "wtype", "clipboard"):
+        raise ValueError(f"voxd config: bad insert_backend {cfg['insert_backend']!r}")
     if "XDG_RUNTIME_DIR" not in os.environ and path == CONFIG_PATH:
         # Systemd user units always set XDG_RUNTIME_DIR, but bare contexts
         # (e.g. a compositor exec without the session env) may not. Prefer the

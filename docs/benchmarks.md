@@ -50,6 +50,31 @@ Sample: bundled `test_wavs/en.wav` (3.85 s, resampled 24 kHz → 16 kHz in-runti
   `worker_idle_timeout` in `~/.config/voxd/config.toml` to shrink the window at the
   cost of more 2 s cold loads.
 
+## Hotwords experiment (2026-10-01, Option A + beam search)
+
+Goal: bias through decoding toward technical terms (general vocab, not per-user).
+Method: `modified_beam_search` + plain-word hotwords file + `modeling_unit=bpe` +
+`bpe.vocab` derived from the published `tokenizer.json` merge ranks
+(`prototype/make_bpe_vocab.py`; regenerate with the command in `docs/future.md`
+if the model changes). Test speech: `espeak-ng` technical sentences (robotic —
+weak proxy for human speech, good for A/B mechanics, not for absolute WER).
+
+Findings on i5-1235U, threads=4, 4–5 s utterances:
+
+- Without `modeling_unit=bpe` + `bpe.vocab`, hotwords are silently ignored at any
+  score (1.5–4.0) and in any file format (BPE pieces or plain words). The sherpa
+  docs bury this: BPE models need the unit set or the hotwords path is dead.
+- With unit+vocab, the mechanism engages: `pipe wire` → `pipewire` at score 1.5.
+- Effect size is narrow on synthetic speech: `systemd`→`system D`, `hyprland`→
+  `hyperland`, `hyprctl`→`Hypercutal`, `onnx`→`on's` survive at 1.5 and 2.5.
+  Score 4.0 over-biases and distorts neighbors (`system v`, `hyper cattle`,
+  dropped `with`). Sweet spot on this data: 1.5–2.5, fixing only close calls.
+- Latency cost is modest: beam+hotwords 0.5–0.6 s vs greedy 0.4–0.5 s for the same
+  clips — inside the 700 ms budget for short utterances. Cold load 3.1 s vs 2.3 s.
+- Verdict: keep the plumbing (config-flagged, default greedy/off). Do NOT enable by
+  default yet. Next: re-test on human speech, where formant variation may give the
+  beam more to work with; espeak's canonical pronunciation likely understates the win.
+
 ## Covered live (Phase 2 service on reference machine)
 
 - End-to-end hold-key dictation works: trigger, capture, decode, cleanup, insertion.

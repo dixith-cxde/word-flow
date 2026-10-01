@@ -25,17 +25,29 @@ def rss_mb() -> float:
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
 
 
-def create_recognizer() -> tuple:
+def create_recognizer(
+    threads=NUM_THREADS,
+    decoding="greedy_search",
+    hotwords="",
+    score=1.5,
+    modeling_unit="",
+    bpe_vocab="",
+) -> tuple:
     t0 = time.perf_counter()
     recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
         encoder=str(MODEL_DIR / "encoder.int8.onnx"),
         decoder=str(MODEL_DIR / "decoder.int8.onnx"),
         joiner=str(MODEL_DIR / "joiner.int8.onnx"),
         tokens=str(MODEL_DIR / "tokens.txt"),
-        num_threads=NUM_THREADS,
+        num_threads=threads,
         sample_rate=16000,
         feature_dim=80,
-        decoding_method="greedy_search",
+        decoding_method=decoding,
+        max_active_paths=4,
+        hotwords_file=hotwords,
+        hotwords_score=score,
+        modeling_unit=modeling_unit,
+        bpe_vocab=bpe_vocab,
         model_type="nemo_transducer",
         provider="cpu",
     )
@@ -114,6 +126,11 @@ def main() -> int:
     g.add_argument("--file", type=Path)
     g.add_argument("--mic", action="store_true")
     g.add_argument("--mic-secs", type=float, metavar="SECONDS")
+    ap.add_argument("--decoding", default="greedy_search")
+    ap.add_argument("--hotwords", default="")
+    ap.add_argument("--hotwords-score", type=float, default=1.5)
+    ap.add_argument("--modeling-unit", default="")
+    ap.add_argument("--bpe-vocab", default="")
     args = ap.parse_args()
 
     for f in ("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"):
@@ -122,7 +139,13 @@ def main() -> int:
             return 1
 
     print(f"RSS before load: {rss_mb():.0f} MB", flush=True)
-    recognizer, t_load = create_recognizer()
+    recognizer, t_load = create_recognizer(
+        decoding=args.decoding,
+        hotwords=args.hotwords,
+        score=args.hotwords_score,
+        modeling_unit=args.modeling_unit,
+        bpe_vocab=args.bpe_vocab,
+    )
     print(f"model loaded in {t_load:.2f}s (threads={NUM_THREADS}, pid={os.getpid()})", flush=True)
     print(f"RSS loaded idle: {rss_mb():.0f} MB", flush=True)
 

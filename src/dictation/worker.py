@@ -30,7 +30,7 @@ def create_recognizer(model_dir: str, num_threads: int):
     )
 
 
-def serve(sock_path: str, recognizer, idle_timeout: float) -> None:
+def serve(sock_path: str, recognizer, idle_timeout: float, conn_timeout: float = 30) -> None:
     srv = proto.bind_unix_socket(sock_path)
     srv.listen(1)
     srv.settimeout(idle_timeout)
@@ -39,11 +39,12 @@ def serve(sock_path: str, recognizer, idle_timeout: float) -> None:
             conn, _ = srv.accept()
         except socket.timeout:
             return  # idle timeout: exit, memory back to the OS
+        conn.settimeout(conn_timeout)  # a half-open peer must not pin ~800 MB
         with conn:
             f = conn.makefile("rwb")
             try:
                 pcm = proto.read_frame(f)
-            except (EOFError, ValueError):
+            except (EOFError, ValueError, socket.timeout):
                 continue
             samples = np.frombuffer(pcm, dtype=np.float32)
             stream = recognizer.create_stream()
@@ -59,9 +60,10 @@ def main() -> int:
     ap.add_argument("--model-dir", required=True)
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--idle-timeout", type=float, default=60)
+    ap.add_argument("--conn-timeout", type=float, default=30)
     args = ap.parse_args()
     recognizer = create_recognizer(args.model_dir, args.threads)
-    serve(args.socket, recognizer, args.idle_timeout)
+    serve(args.socket, recognizer, args.idle_timeout, args.conn_timeout)
     return 0
 
 

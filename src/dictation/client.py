@@ -9,8 +9,12 @@ from dictation import config as config_mod
 from dictation import protocol as proto
 
 
-def call(sock_path: str, req: dict) -> dict:
+TIMEOUTS = {"status": 10.0, "start": 30.0, "stop": 120.0, "toggle": 120.0}
+
+
+def call(sock_path: str, req: dict, timeout: float = 60.0) -> dict:
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(timeout)  # wedged daemon must not hang the keybinding forever
     with s:
         s.connect(sock_path)
         f = s.makefile("rwb")
@@ -30,7 +34,7 @@ def main(argv=None) -> int:
         # GNOME bindings fire on press only (no release event), so one shortcut
         # alternates: idle -> start, recording -> stop.
         try:
-            state = call(sock_path, {"cmd": "status"})
+            state = call(sock_path, {"cmd": "status"}, timeout=TIMEOUTS["status"])
         except (OSError, ValueError) as e:
             print(f"vox: {e}", file=sys.stderr)
             return 1
@@ -39,7 +43,7 @@ def main(argv=None) -> int:
             return 1
         cmd = "stop" if state.get("state") == "recording" else "start"
     try:
-        resp = call(sock_path, {"cmd": cmd})
+        resp = call(sock_path, {"cmd": cmd}, timeout=TIMEOUTS[cmd])
     except (OSError, ValueError) as e:
         print(f"vox: {e}", file=sys.stderr)
         return 1

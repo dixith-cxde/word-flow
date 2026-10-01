@@ -27,4 +27,6 @@ Pre-scaffold: no stack, code, or commands. No installs, downloads, recording, or
 - Hooks: `.venv/bin/pre-commit run --all-files` (whitespace, private-key scan, ruff)
 - Spike: `.venv/bin/python prototype/mic_spike.py --file <wav>` |
   `--mic` (interactive Enter start/stop) | `--mic-secs N`
+- Service: `.venv/bin/voxd [--config PATH]` + `.venv/bin/vox start|stop|status`
+  (Hyprland `bind`/`bindr` exec `vox start`/`vox stop`; user unit in `systemd/`)
 - Done = build/lint/tests pass, diff scoped, new behavior tested, benchmarks re-run if perf-relevant.

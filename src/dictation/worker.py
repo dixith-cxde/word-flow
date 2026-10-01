@@ -15,7 +15,7 @@ import sherpa_onnx
 from dictation import protocol as proto
 
 
-def create_recognizer(model_dir: str, num_threads: int):
+def create_recognizer(model_dir: str, num_threads: int, args) -> object:
     return sherpa_onnx.OfflineRecognizer.from_transducer(
         encoder=os.path.join(model_dir, "encoder.int8.onnx"),
         decoder=os.path.join(model_dir, "decoder.int8.onnx"),
@@ -24,7 +24,10 @@ def create_recognizer(model_dir: str, num_threads: int):
         num_threads=num_threads,
         sample_rate=proto.SAMPLE_RATE,
         feature_dim=80,
-        decoding_method="greedy_search",
+        decoding_method=args.decoding_method,
+        max_active_paths=args.max_active_paths,
+        hotwords_file=args.hotwords_file,
+        hotwords_score=args.hotwords_score,
         model_type="nemo_transducer",
         provider="cpu",
     )
@@ -61,8 +64,12 @@ def main() -> int:
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--idle-timeout", type=float, default=60)
     ap.add_argument("--conn-timeout", type=float, default=30)
+    ap.add_argument("--decoding-method", default="greedy_search")
+    ap.add_argument("--hotwords-file", default="")
+    ap.add_argument("--hotwords-score", type=float, default=1.5)
+    ap.add_argument("--max-active-paths", type=int, default=4)
     args = ap.parse_args()
-    recognizer = create_recognizer(args.model_dir, args.threads)
+    recognizer = create_recognizer(args.model_dir, args.threads, args)
     serve(args.socket, recognizer, args.idle_timeout, args.conn_timeout)
     return 0
 

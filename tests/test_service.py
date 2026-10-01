@@ -252,11 +252,27 @@ def test_config_unknown_key_warns(tmp_path, capsys):
 
 
 def test_config_bad_values_rejected(tmp_path):
-    for body in ("num_threads = 0\n", "worker_idle_timeout = -5\n", 'insert_backend = "x"\n'):
+    bodies = (
+        "num_threads = 0\n",
+        "worker_idle_timeout = -5\n",
+        'insert_backend = "x"\n',
+        'decoding_method = "beam"\n',
+        "max_active_paths = 0\n",
+        "hotwords_score = 'high'\n",
+    )
+    for body in bodies:
         p = tmp_path / "bad.toml"
         p.write_text(body)
         with pytest.raises(ValueError):
             config_mod.load(path=p)
+
+
+def test_config_hotwords_defaults(tmp_path):
+    cfg = config_mod.load(path=tmp_path / "missing.toml")
+    assert cfg["decoding_method"] == "greedy_search"
+    assert cfg["hotwords_file"] == ""
+    assert cfg["hotwords_score"] == 1.5
+    assert cfg["max_active_paths"] == 4
 
 
 def test_config_snippet_dollar_preserved(tmp_path):

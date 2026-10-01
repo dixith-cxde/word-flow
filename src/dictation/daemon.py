@@ -72,6 +72,9 @@ def _ensure_worker(cfg: dict, state: dict) -> None:
     model_dir = cfg["model_dir"]
     if not os.path.isabs(model_dir):
         model_dir = str(REPO_ROOT / model_dir)
+    hotwords = cfg.get("hotwords_file", "")
+    if hotwords and not os.path.isabs(hotwords):
+        hotwords = str(REPO_ROOT / hotwords)
     state["worker_proc"] = subprocess.Popen(
         [
             sys.executable,
@@ -84,6 +87,14 @@ def _ensure_worker(cfg: dict, state: dict) -> None:
             str(cfg["num_threads"]),
             "--idle-timeout",
             str(cfg["worker_idle_timeout"]),
+            "--decoding-method",
+            str(cfg.get("decoding_method", "greedy_search")),
+            "--hotwords-file",
+            hotwords,
+            "--hotwords-score",
+            str(cfg.get("hotwords_score", 1.5)),
+            "--max-active-paths",
+            str(cfg.get("max_active_paths", 4)),
         ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,

@@ -10,6 +10,10 @@ DEFAULTS: dict = {
     "model_dir": "models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
     "worker_idle_timeout": 25,  # seconds warm after last use, then worker exits
     "num_threads": 4,
+    "decoding_method": "greedy_search",  # or modified_beam_search + hotwords
+    "hotwords_file": "",
+    "hotwords_score": 1.5,
+    "max_active_paths": 4,
     "insert_backend": "auto",  # auto | wtype | clipboard
     "dictionary": {},
     "snippets": {},
@@ -46,6 +50,12 @@ def load(path: Path | None = None) -> dict:
         raise ValueError(f"voxd config: worker_idle_timeout must be positive, got {timeout!r}")
     if cfg["insert_backend"] not in ("auto", "wtype", "clipboard"):
         raise ValueError(f"voxd config: bad insert_backend {cfg['insert_backend']!r}")
+    if cfg["decoding_method"] not in ("greedy_search", "modified_beam_search"):
+        raise ValueError(f"voxd config: bad decoding_method {cfg['decoding_method']!r}")
+    if not isinstance(cfg["max_active_paths"], int) or cfg["max_active_paths"] < 1:
+        raise ValueError(f"voxd config: bad max_active_paths {cfg['max_active_paths']!r}")
+    if not isinstance(cfg["hotwords_score"], (int, float)):
+        raise ValueError(f"voxd config: bad hotwords_score {cfg['hotwords_score']!r}")
     if "XDG_RUNTIME_DIR" not in os.environ and path == CONFIG_PATH:
         # Systemd user units always set XDG_RUNTIME_DIR, but bare contexts
         # (e.g. a compositor exec without the session env) may not. Prefer the

@@ -65,16 +65,19 @@ def _reap(proc, thread, timeout: float = 10) -> None:
         thread.join(timeout=timeout)
 
 
+def _resolve(path: str) -> str:
+    if path and not os.path.isabs(path):
+        return str(REPO_ROOT / path)
+    return path
+
+
 def _ensure_worker(cfg: dict, state: dict) -> None:
     proc = state.get("worker_proc")
     if proc is not None and proc.poll() is None and os.path.exists(_worker_sock_path(cfg)):
         return
-    model_dir = cfg["model_dir"]
-    if not os.path.isabs(model_dir):
-        model_dir = str(REPO_ROOT / model_dir)
-    hotwords = cfg.get("hotwords_file", "")
-    if hotwords and not os.path.isabs(hotwords):
-        hotwords = str(REPO_ROOT / hotwords)
+    model_dir = _resolve(cfg["model_dir"])
+    hotwords = _resolve(cfg.get("hotwords_file", ""))
+    bpe_vocab = _resolve(cfg.get("bpe_vocab", ""))
     state["worker_proc"] = subprocess.Popen(
         [
             sys.executable,
@@ -95,6 +98,10 @@ def _ensure_worker(cfg: dict, state: dict) -> None:
             str(cfg.get("hotwords_score", 1.5)),
             "--max-active-paths",
             str(cfg.get("max_active_paths", 4)),
+            "--modeling-unit",
+            str(cfg.get("modeling_unit", "")),
+            "--bpe-vocab",
+            bpe_vocab,
         ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,

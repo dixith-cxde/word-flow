@@ -259,6 +259,7 @@ def test_config_bad_values_rejected(tmp_path):
         'decoding_method = "beam"\n',
         "max_active_paths = 0\n",
         "hotwords_score = 'high'\n",
+        'modeling_unit = "word"\n',
     )
     for body in bodies:
         p = tmp_path / "bad.toml"
@@ -273,6 +274,8 @@ def test_config_hotwords_defaults(tmp_path):
     assert cfg["hotwords_file"] == ""
     assert cfg["hotwords_score"] == 1.5
     assert cfg["max_active_paths"] == 4
+    assert cfg["modeling_unit"] == ""
+    assert cfg["bpe_vocab"] == ""
 
 
 def test_config_snippet_dollar_preserved(tmp_path):

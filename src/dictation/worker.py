@@ -28,6 +28,8 @@ def create_recognizer(model_dir: str, num_threads: int, args) -> object:
         max_active_paths=args.max_active_paths,
         hotwords_file=args.hotwords_file,
         hotwords_score=args.hotwords_score,
+        modeling_unit=args.modeling_unit,
+        bpe_vocab=args.bpe_vocab,
         model_type="nemo_transducer",
         provider="cpu",
     )
@@ -68,6 +70,8 @@ def main() -> int:
     ap.add_argument("--hotwords-file", default="")
     ap.add_argument("--hotwords-score", type=float, default=1.5)
     ap.add_argument("--max-active-paths", type=int, default=4)
+    ap.add_argument("--modeling-unit", default="")
+    ap.add_argument("--bpe-vocab", default="")
     args = ap.parse_args()
     recognizer = create_recognizer(args.model_dir, args.threads, args)
     serve(args.socket, recognizer, args.idle_timeout, args.conn_timeout)

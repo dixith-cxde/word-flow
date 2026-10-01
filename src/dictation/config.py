@@ -14,6 +14,8 @@ DEFAULTS: dict = {
     "hotwords_file": "",
     "hotwords_score": 1.5,
     "max_active_paths": 4,
+    "modeling_unit": "",
+    "bpe_vocab": "",
     "insert_backend": "auto",  # auto | wtype | clipboard
     "dictionary": {},
     "snippets": {},
@@ -56,6 +58,8 @@ def load(path: Path | None = None) -> dict:
         raise ValueError(f"voxd config: bad max_active_paths {cfg['max_active_paths']!r}")
     if not isinstance(cfg["hotwords_score"], (int, float)):
         raise ValueError(f"voxd config: bad hotwords_score {cfg['hotwords_score']!r}")
+    if cfg["modeling_unit"] not in ("", "bpe", "cjkchar", "cjkchar+bpe", "bbpe"):
+        raise ValueError(f"voxd config: bad modeling_unit {cfg['modeling_unit']!r}")
     if "XDG_RUNTIME_DIR" not in os.environ and path == CONFIG_PATH:
         # Systemd user units always set XDG_RUNTIME_DIR, but bare contexts
         # (e.g. a compositor exec without the session env) may not. Prefer the

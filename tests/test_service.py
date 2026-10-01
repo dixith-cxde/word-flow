@@ -4,6 +4,7 @@ import io
 import os
 import socket
 import threading
+import time
 
 import pytest
 
@@ -34,10 +35,48 @@ def test_short_read_raises():
         proto.read_frame(io.BytesIO(b"\x00\x01"))
 
 
+def test_zero_length_frame_is_empty():
+    stream = io.BytesIO(proto.pack_text(""))
+    assert proto.read_frame(stream) == b""
+
+
+def test_oversize_frame_rejected():
+    big = proto._LEN.pack(proto.MAX_PCM_BYTES + 1)
+    with pytest.raises(ValueError):
+        proto.read_frame(io.BytesIO(big))
+
+
+def test_bind_refuses_live_socket(tmp_path):
+    from dictation import protocol as proto2
+
+    sock_path = str(tmp_path / "live.sock")
+    srv = proto2.bind_unix_socket(sock_path)
+    try:
+        with pytest.raises(RuntimeError):
+            proto2.bind_unix_socket(sock_path)
+    finally:
+        srv.close()
+    # Stale file (no listener) is replaced.
+    srv2 = proto2.bind_unix_socket(sock_path)
+    srv2.close()
+
+
+def test_bind_restricts_permissions(tmp_path):
+    import stat
+
+    sock_path = str(tmp_path / "perm.sock")
+    srv = proto.bind_unix_socket(sock_path)
+    try:
+        mode = stat.S_IMODE(os.stat(sock_path).st_mode)
+        assert mode & 0o077 == 0, oct(mode)
+    finally:
+        srv.close()
+
+
 def test_builders_do_not_contain_text_in_argv():
     # Text travels via stdin so argv stays clean (no secrets in ps output).
     assert "secret" not in " ".join(insert_mod.build_wtype_cmd("secret"))
-    copy, paste = insert_mod.build_clipboard_cmds("secret")
+    copy, paste = insert_mod.build_clipboard_cmds()
     assert "secret" not in " ".join(copy + paste)
 
 
@@ -86,6 +125,105 @@ def test_toggle_stops_when_recording(monkeypatch, capsys):
     assert client_mod.main(["toggle", "--socket", "/nonexistent"]) == 0
     assert [r["cmd"] for r in calls] == ["status", "stop"]
     assert capsys.readouterr().out == "hello\n"
+
+
+def _run_daemon_thread(sock_path: str, cfg: dict) -> threading.Thread:
+    from dictation import daemon as daemon_mod
+
+    t = threading.Thread(target=daemon_mod.run, args=(sock_path, cfg))
+    t.daemon = True  # accept loop would otherwise hang the test session
+    t.start()
+    for _ in range(100):
+        if os.path.exists(sock_path):
+            return t
+        time.sleep(0.05)
+    raise RuntimeError("daemon did not bind")
+
+
+def _daemon_cfg(sock_path: str, tmp_path) -> dict:
+    return {
+        "socket": sock_path,
+        "model_dir": str(tmp_path),
+        "worker_idle_timeout": 5,
+        "num_threads": 1,
+        "insert_backend": "none",
+        "dictionary": {},
+        "snippets": {},
+    }
+
+
+class _FakeProc:
+    def __init__(self, chunks: list):
+        self._chunks = chunks
+
+    def poll(self):
+        return None
+
+    def terminate(self):
+        pass
+
+    def kill(self):
+        pass
+
+    def wait(self, timeout=None):
+        return 0
+
+
+class _DoneThread:
+    def join(self, timeout=None):
+        pass
+
+
+def test_status_answers_during_slow_stop(monkeypatch, tmp_path):
+    # Finding #1: transcription must not wedge the accept loop.
+    from dictation import client as client_mod
+    from dictation import daemon as daemon_mod
+
+    sock_path = str(tmp_path / "d.sock")
+    pcm = b"\x00" * 16000  # 0.25 s of silence
+    monkeypatch.setattr(
+        daemon_mod,
+        "_spawn_recorder",
+        lambda: (_FakeProc([]), [pcm], _DoneThread()),
+    )
+
+    def slow_transcribe(cfg, state, pcm_bytes):
+        time.sleep(2)
+        return "hello", 2.0
+
+    monkeypatch.setattr(daemon_mod, "_transcribe", slow_transcribe)
+    monkeypatch.setattr(daemon_mod.insert_mod, "insert", lambda text, backend="auto": "wtype")
+    _run_daemon_thread(sock_path, _daemon_cfg(sock_path, tmp_path))
+
+    results = {}
+    assert client_mod.call(sock_path, {"cmd": "start"}) == {"ok": True}
+    t = threading.Thread(
+        target=lambda: results.setdefault("stop", client_mod.call(sock_path, {"cmd": "stop"}))
+    )
+    t.start()
+    time.sleep(0.3)  # let stop enter the slow transcribe
+    t0 = time.monotonic()
+    status = client_mod.call(sock_path, {"cmd": "status"})
+    status_latency = time.monotonic() - t0
+    t.join(timeout=15)
+    assert status == {"ok": True, "state": "idle", "worker": "cold"}
+    assert status_latency < 1.5, status_latency
+    assert results["stop"]["text"] == "Hello"  # cleanup capitalizes
+
+
+def test_stop_rejects_overlong_utterance(monkeypatch, tmp_path):
+    from dictation import client as client_mod
+    from dictation import daemon as daemon_mod
+    from dictation import protocol as proto2
+
+    sock_path = str(tmp_path / "d2.sock")
+    huge = [b"\x00" * (proto2.MAX_PCM_BYTES + 4)]
+    monkeypatch.setattr(daemon_mod, "_spawn_recorder", lambda: (_FakeProc([]), huge, _DoneThread()))
+    _run_daemon_thread(sock_path, _daemon_cfg(sock_path, tmp_path))
+    assert client_mod.call(sock_path, {"cmd": "start"}) == {"ok": True}
+    resp = client_mod.call(sock_path, {"cmd": "stop"})
+    assert resp["ok"] is False
+    assert "too long" in resp["error"]
 
 
 def test_config_defaults_and_override(tmp_path):

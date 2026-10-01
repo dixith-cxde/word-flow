@@ -60,6 +60,34 @@ def test_drain_keeps_up_with_producer():
     assert b"".join(chunks) == b"\x00" * (100 * 8192)
 
 
+def test_toggle_starts_when_idle(monkeypatch, capsys):
+    from dictation import client as client_mod
+
+    calls = []
+    monkeypatch.setattr(
+        client_mod, "call", lambda sock, req: calls.append(req) or {"ok": True, "state": "idle"}
+    )
+    assert client_mod.main(["toggle", "--socket", "/nonexistent"]) == 0
+    assert [r["cmd"] for r in calls] == ["status", "start"]
+
+
+def test_toggle_stops_when_recording(monkeypatch, capsys):
+    from dictation import client as client_mod
+
+    calls = []
+
+    def fake_call(sock, req):
+        calls.append(req)
+        if req["cmd"] == "status":
+            return {"ok": True, "state": "recording"}
+        return {"ok": True, "text": "hello"}
+
+    monkeypatch.setattr(client_mod, "call", fake_call)
+    assert client_mod.main(["toggle", "--socket", "/nonexistent"]) == 0
+    assert [r["cmd"] for r in calls] == ["status", "stop"]
+    assert capsys.readouterr().out == "hello\n"
+
+
 def test_config_defaults_and_override(tmp_path):
     cfg = config_mod.load(path=tmp_path / "missing.toml")
     assert cfg["num_threads"] == 4
@@ -69,4 +97,4 @@ def test_config_defaults_and_override(tmp_path):
     cfg = config_mod.load(path=p)
     assert cfg["num_threads"] == 2
     assert cfg["snippets"] == {"myemail": "me@example.com"}
-    assert cfg["worker_idle_timeout"] == 60  # default preserved
+    assert cfg["worker_idle_timeout"] == 25  # default preserved

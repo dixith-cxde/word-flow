@@ -1,0 +1,78 @@
+# General technical vocabulary for hotwords biasing (one term per line).
+# Plain words here; prototype/make_hotwords.py segments them into the
+# Parakeet BPE pieces sherpa-onnx expects. General, not per-user.
+pipewire
+wireplumber
+hyprland
+wayland
+xwayland
+systemd
+udev
+uinput
+onnx
+transducer
+parakeet
+whisper
+sherpa
+vosk
+neovim
+emacs
+tmux
+docker
+kubernetes
+kubectl
+github
+gitlab
+python
+javascript
+typescript
+rust
+golang
+numpy
+pytorch
+ffmpeg
+bluetooth
+wifi
+firewall
+arch
+cachyos
+gnome
+kde
+sway
+niri
+dictation
+hotword
+vad
+silero
+webrtc
+websocket
+json
+toml
+yaml
+markdown
+daemon
+unix socket
+clipboard
+wtype
+ydotool
+hyprctl
+systemctl
+journalctl
+gsettings
+pipewire pulse
+virtual keyboard
+language model
+neural engine
+quantized
+int8
+realtime
+backend
+frontend
+middleware
+cache
+latency
+throughput
+deadlock
+race condition
+segfault
+core dump

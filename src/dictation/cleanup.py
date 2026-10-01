@@ -59,9 +59,13 @@ def apply_dictionary(text: str, mapping: dict[str, str]) -> str:
 
 
 def expand_snippets(text: str, snippets: dict[str, str]) -> str:
-    """Whole-word cue expansion (e.g. {"myemail": "me@example.com"})."""
-    for cue, expansion in snippets.items():
-        text = re.sub(rf"\b{re.escape(cue)}\b", expansion, text)
+    """Cue expansion, longest cue first so phrases win over single words.
+
+    Cues may be multi-word ("gnome media keys" -> full schema path) and match
+    case-insensitively, which is what makes dictated technical terms usable.
+    """
+    for cue in sorted(snippets, key=lambda c: (-len(c.split()), -len(c))):
+        text = re.sub(rf"\b{re.escape(cue)}\b", lambda m: snippets[cue], text, flags=re.IGNORECASE)
     return text
 
 

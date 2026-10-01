@@ -68,3 +68,17 @@ def test_apply_dictionary_direct():
 
 def test_expand_snippets_direct():
     assert expand_snippets("see myemail", {"myemail": "me@example.com"}) == "see me@example.com"
+
+
+def test_snippet_phrase_longest_first():
+    snippets = {
+        "media keys": "MEDIA-KEYS",
+        "gnome media keys": "org.gnome.settings-daemon.plugins.media-keys",
+    }
+    out = expand_snippets("open gnome media keys now", snippets)
+    assert out == "open org.gnome.settings-daemon.plugins.media-keys now"
+
+
+def test_snippet_cue_case_insensitive():
+    out = expand_snippets("see MyEmail", {"myemail": "me@example.com"})
+    assert out == "see me@example.com"

@@ -14,7 +14,9 @@ HYPRCTL = "hyprctl"
 
 def build_wtype_cmd(text: str) -> list[str]:
     # "-" reads the text from stdin (avoids argv length/escaping issues).
-    return [WTYPE, "-d", "0", "-"]
+    # NOTE: no "-d 0" — the installed wtype rejects a zero delay as invalid
+    # ("Invalid sleep time"); the default delay is already 0.
+    return [WTYPE, "-"]
 
 
 def build_clipboard_cmds(text: str) -> tuple[list[str], list[str]]:

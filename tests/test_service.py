@@ -2,6 +2,7 @@
 
 import io
 import os
+import signal
 import socket
 import threading
 import time
@@ -103,9 +104,12 @@ def test_toggle_starts_when_idle(monkeypatch, capsys):
     from dictation import client as client_mod
 
     calls = []
-    monkeypatch.setattr(
-        client_mod, "call", lambda sock, req: calls.append(req) or {"ok": True, "state": "idle"}
-    )
+
+    def fake_toggle_call(sock, req, timeout=60):
+        calls.append(req)
+        return {"ok": True, "state": "idle"}
+
+    monkeypatch.setattr(client_mod, "call", fake_toggle_call)
     assert client_mod.main(["toggle", "--socket", "/nonexistent"]) == 0
     assert [r["cmd"] for r in calls] == ["status", "start"]
 
@@ -115,7 +119,7 @@ def test_toggle_stops_when_recording(monkeypatch, capsys):
 
     calls = []
 
-    def fake_call(sock, req):
+    def fake_call(sock, req, timeout=60):
         calls.append(req)
         if req["cmd"] == "status":
             return {"ok": True, "state": "recording"}
@@ -153,20 +157,21 @@ def _daemon_cfg(sock_path: str, tmp_path) -> dict:
 
 
 class _FakeProc:
-    def __init__(self, chunks: list):
-        self._chunks = chunks
+    def __init__(self, _chunks=None, crashed=False):
+        self.returncode = 2 if crashed else None
 
     def poll(self):
-        return None
+        return self.returncode
 
     def terminate(self):
-        pass
+        if self.returncode is None:
+            self.returncode = -signal.SIGTERM
 
     def kill(self):
-        pass
+        self.returncode = -signal.SIGKILL
 
     def wait(self, timeout=None):
-        return 0
+        return self.returncode
 
 
 class _DoneThread:
@@ -236,3 +241,134 @@ def test_config_defaults_and_override(tmp_path):
     assert cfg["num_threads"] == 2
     assert cfg["snippets"] == {"myemail": "me@example.com"}
     assert cfg["worker_idle_timeout"] == 25  # default preserved
+
+
+def test_config_unknown_key_warns(tmp_path, capsys):
+    p = tmp_path / "config.toml"
+    p.write_text("num_thread = 2\n")  # typo, not a real key
+    cfg = config_mod.load(path=p)
+    assert cfg["num_threads"] == 4
+    assert "unknown key" in capsys.readouterr().err
+
+
+def test_config_bad_values_rejected(tmp_path):
+    for body in ("num_threads = 0\n", "worker_idle_timeout = -5\n", 'insert_backend = "x"\n'):
+        p = tmp_path / "bad.toml"
+        p.write_text(body)
+        with pytest.raises(ValueError):
+            config_mod.load(path=p)
+
+
+def test_config_snippet_dollar_preserved(tmp_path):
+    p = tmp_path / "config.toml"
+    p.write_text('[snippets]\n"show home" = "echo $HOME"\n')
+    cfg = config_mod.load(path=p)
+    assert cfg["snippets"] == {"show home": "echo $HOME"}
+
+
+def test_call_times_out(tmp_path):
+    from dictation import client as client_mod
+
+    srv = proto.bind_unix_socket(str(tmp_path / "blackhole.sock"))
+    threading.Thread(target=srv.accept, daemon=True).start()
+    with pytest.raises(OSError):
+        client_mod.call(str(tmp_path / "blackhole.sock"), {"cmd": "status"}, timeout=0.3)
+    srv.close()
+
+
+def test_worker_drops_half_open_connection(tmp_path):
+    import struct
+
+    from dictation import worker as worker_mod
+
+    sock_path = str(tmp_path / "halfopen.sock")
+    t = threading.Thread(target=worker_mod.serve, args=(sock_path, None, 30, 1))
+    t.daemon = True
+    t.start()
+    for _ in range(100):
+        if os.path.exists(sock_path):
+            break
+        time.sleep(0.05)
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    with s:
+        s.connect(sock_path)
+        f = s.makefile("rwb")
+        f.write(struct.pack(">Q", 100))  # length prefix, then silence forever
+        f.flush()
+        time.sleep(2)
+        assert f.read() == b""  # worker closed the connection
+
+
+def _fake_worker_once(sock_path: str, text: str = "hi") -> None:
+    srv = proto.bind_unix_socket(sock_path)
+
+    def _run():
+        conn, _ = srv.accept()
+        with conn:
+            f = conn.makefile("rwb")
+            try:
+                proto.read_frame(f)
+            except Exception:
+                return
+            f.write(proto.pack_text(text))
+            f.flush()
+        srv.close()
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _transcribe_cfg(sock_path: str) -> dict:
+    return {
+        "socket": sock_path,
+        "model_dir": "",
+        "worker_idle_timeout": 5,
+        "num_threads": 1,
+        "insert_backend": "none",
+        "dictionary": {},
+        "snippets": {},
+    }
+
+
+def test_transcribe_retries_dead_worker(monkeypatch, tmp_path):
+    from dictation import daemon as daemon_mod
+
+    sock_path = str(tmp_path / "r.sock")
+    calls = []
+
+    def flaky_ensure(cfg, state):
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("worker gone")
+        _fake_worker_once(cfg["socket"] + ".worker")
+
+    monkeypatch.setattr(daemon_mod, "_ensure_worker", flaky_ensure)
+    text, _ = daemon_mod._transcribe(_transcribe_cfg(sock_path), {}, b"\x00" * 16000)
+    assert text == "hi"
+    assert len(calls) == 2
+
+
+def test_stop_reports_crashed_recorder(monkeypatch, tmp_path):
+    # Finding #12: a mic failure must surface its reason, not read as silence.
+    from dictation import client as client_mod
+    from dictation import daemon as daemon_mod
+
+    sock_path = str(tmp_path / "d3.sock")
+    monkeypatch.setattr(
+        daemon_mod, "_spawn_recorder", lambda: (_FakeProc(crashed=True), [], _DoneThread())
+    )
+    _run_daemon_thread(sock_path, _daemon_cfg(sock_path, tmp_path))
+    assert client_mod.call(sock_path, {"cmd": "start"}) == {"ok": True}
+    resp = client_mod.call(sock_path, {"cmd": "stop"})
+    assert resp["ok"] is False
+    assert "recorder failed" in resp["error"]
+
+
+def test_transcribe_gives_up_loudly(monkeypatch, tmp_path):
+    from dictation import daemon as daemon_mod
+
+    def dead_ensure(cfg, state):
+        raise OSError("no worker")
+
+    monkeypatch.setattr(daemon_mod, "_ensure_worker", dead_ensure)
+    with pytest.raises(RuntimeError, match="transcribe-failed"):
+        daemon_mod._transcribe(_transcribe_cfg(str(tmp_path / "r2.sock")), {}, b"")

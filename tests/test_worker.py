@@ -8,12 +8,18 @@ import tempfile
 import wave
 
 import numpy as np
+import pytest
 
 from dictation import protocol as proto
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_DIR = os.path.join(REPO_ROOT, "models", "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8")
 WAV = os.path.join(MODEL_DIR, "test_wavs", "en.wav")
+
+needs_models = pytest.mark.skipif(
+    not (os.path.isdir(MODEL_DIR) and os.path.isfile(WAV)),
+    reason="model files not downloaded (see install.sh --with-models)",
+)
 
 
 def _wav_pcm_16k(path: str) -> bytes:
@@ -25,6 +31,7 @@ def _wav_pcm_16k(path: str) -> bytes:
     return sr, samples.tobytes()
 
 
+@needs_models
 def test_worker_transcribes_bundled_sample():
     sr, pcm = _wav_pcm_16k(WAV)
     assert sr == 24000  # worker resamples internally; pin the fixture assumption

@@ -63,6 +63,9 @@ if [ "$WITH_MODELS" -eq 1 ]; then
         for f in preprocess.onnx encode.int8.onnx uncached_decode.int8.onnx cached_decode.int8.onnx tokens.txt; do
             [ -f "$PREFIX/models/sherpa-onnx-moonshine-tiny-en-int8/$f" ] || { echo "missing model file: $f"; exit 1; }
         done
+        # MODEL_DIR may hold a partial tree from an interrupted run; clear it so
+        # mv renames (GNU mv would otherwise nest the tree inside the dir).
+        rm -rf "$MODEL_DIR"
         mv "$PREFIX/models/sherpa-onnx-moonshine-tiny-en-int8" "$MODEL_DIR"
     fi
     [ -f "$PREFIX/models/silero_vad.onnx" ] || curl -fSL -o "$PREFIX/models/silero_vad.onnx" "$VAD_URL"

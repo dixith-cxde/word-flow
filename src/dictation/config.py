@@ -63,6 +63,13 @@ def load(path: Path | None = None) -> dict:
         raise ValueError(f"voxd config: bad modeling_unit {cfg['modeling_unit']!r}")
     if cfg["asr_backend"] not in ("moonshine", "transducer"):
         raise ValueError(f"voxd config: bad asr_backend {cfg['asr_backend']!r}")
+    if cfg["asr_backend"] == "moonshine" and (
+        cfg.get("hotwords_file") or cfg.get("decoding_method") != "greedy_search"
+    ):
+        print(
+            "voxd config: hotwords/decoding_method ignored with asr_backend=moonshine",
+            file=sys.stderr,
+        )
     if "XDG_RUNTIME_DIR" not in os.environ and path == CONFIG_PATH:
         # Systemd user units always set XDG_RUNTIME_DIR, but bare contexts
         # (e.g. a compositor exec without the session env) may not. Prefer the

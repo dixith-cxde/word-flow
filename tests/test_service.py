@@ -291,6 +291,13 @@ def test_config_bad_backend_rejected(tmp_path):
         config_mod.load(path=p)
 
 
+def test_config_moonshine_hotwords_warns(tmp_path, capsys):
+    p = tmp_path / "hotwords.toml"
+    p.write_text('hotwords_file = "words.txt"\n')
+    config_mod.load(path=p)
+    assert "ignored with asr_backend=moonshine" in capsys.readouterr().err
+
+
 def test_config_snippet_dollar_preserved(tmp_path):
     p = tmp_path / "config.toml"
     p.write_text('[snippets]\n"show home" = "echo $HOME"\n')

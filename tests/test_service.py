@@ -157,8 +157,10 @@ def _daemon_cfg(sock_path: str, tmp_path) -> dict:
 
 
 class _FakeProc:
-    def __init__(self, _chunks=None, crashed=False):
-        self.returncode = 2 if crashed else None
+    def __init__(self, _chunks=None, crashed=False, exited=None):
+        # exited=N: process already reaped itself with code N (mirrors the real
+        # recorder, which catches SIGTERM, flushes, and returns 0 normally).
+        self.returncode = 2 if crashed else exited
 
     def poll(self):
         return self.returncode
@@ -360,6 +362,26 @@ def test_transcribe_retries_dead_worker(monkeypatch, tmp_path):
     text, _ = daemon_mod._transcribe(_transcribe_cfg(sock_path), {}, b"\x00" * 16000)
     assert text == "hi"
     assert len(calls) == 2
+
+
+def test_stop_accepts_graceful_recorder_exit(monkeypatch, tmp_path):
+    # Finding (live): the real recorder catches SIGTERM, flushes, and exits 0.
+    # That is a successful stop, not a crash — chunks must still transcribe.
+    from dictation import client as client_mod
+    from dictation import daemon as daemon_mod
+
+    pcm = b"\x00" * 16000
+    monkeypatch.setattr(
+        daemon_mod, "_spawn_recorder", lambda: (_FakeProc(exited=0), [pcm], _DoneThread())
+    )
+    monkeypatch.setattr(daemon_mod, "_transcribe", lambda cfg, state, b: ("hi", 0.1))
+    monkeypatch.setattr(daemon_mod.insert_mod, "insert", lambda text, backend="auto": "wtype")
+    sock_path = str(tmp_path / "d4.sock")
+    _run_daemon_thread(sock_path, _daemon_cfg(sock_path, tmp_path))
+    assert client_mod.call(sock_path, {"cmd": "start"}) == {"ok": True}
+    resp = client_mod.call(sock_path, {"cmd": "stop"})
+    assert resp["ok"] is True
+    assert resp["text"] == "Hi"
 
 
 def test_stop_reports_crashed_recorder(monkeypatch, tmp_path):

@@ -105,6 +105,24 @@ Measured on i5-1235U, threads=4:
   Emits fullwidth `。，？` and duplicates Moonshine's native marks (`,，`, ` .。`).
   int8 quant of it verified parity 3/3 at 3 ms (294→75 MB) — method kept, model dropped.
 
+## Service loop (F9-equivalent via vox start/stop, 2026-10-02)
+
+Measured against a scratch daemon (separate socket, `worker_idle_timeout=10`):
+
+- Daemon idle: ~5 MB RSS fresh (VmHWM=VmRSS), **0% CPU** over 5 s (0 jiffies).
+  Serving daemon after traffic: ~20 MB. Both far under the 30 MB budget.
+- `vox start` roundtrip: **68 ms** (key-to-record proxy, budget <150 ms).
+- `vox stop` on 2.8 s room-silence utterance: **1.39 s cold** (includes worker
+  cold load), `decode_s` 0.08 s. Warm release-to-text projects to ~0.2 s —
+  inside the 700 ms budget for 5 s utterances.
+- Worker warm HWM: **189 MB** after the 2.8 s decode (scales with audio length:
+  286 MB after 16.7 s). Exited on schedule after the 10 s idle timeout.
+- Bug found by this measurement: graceful recorder exit (code 0) was rejected
+  as "recorder failed" — fixed (exit 0 now accepted; `test_stop_accepts_
+  graceful_recorder_exit` pins it). Silence hallucinates
+  ("Is the least common one out of this rig?") — expected without VAD;
+  silero VAD trimming is still unwired (stack docs list it, no code uses it).
+
 ## Still pending
 
 - End-to-end hold-key run against the moonshine worker (service wiring unchanged,

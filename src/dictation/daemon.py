@@ -171,7 +171,10 @@ def _handle(cfg: dict, state: dict, req: dict) -> dict:
         if proc.poll() is None:
             proc.terminate()
         _reap(proc, thread)
-        if proc.returncode not in (-signal.SIGTERM, -signal.SIGINT):
+        # Exit 0 is the common graceful path: the recorder catches our SIGTERM,
+        # drains its final block, flushes, and returns normally. -SIGTERM is the
+        # same request landing mid-block. Anything else is a real failure.
+        if proc.returncode not in (0, -signal.SIGTERM, -signal.SIGINT):
             return {
                 "ok": False,
                 "error": f"recorder failed (exit {proc.returncode}); "

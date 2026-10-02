@@ -76,8 +76,6 @@ def _ensure_worker(cfg: dict, state: dict) -> None:
     if proc is not None and proc.poll() is None and os.path.exists(_worker_sock_path(cfg)):
         return
     model_dir = _resolve(cfg["model_dir"])
-    hotwords = _resolve(cfg.get("hotwords_file", ""))
-    bpe_vocab = _resolve(cfg.get("bpe_vocab", ""))
     state["worker_proc"] = subprocess.Popen(
         [
             sys.executable,
@@ -90,20 +88,6 @@ def _ensure_worker(cfg: dict, state: dict) -> None:
             str(cfg["num_threads"]),
             "--idle-timeout",
             str(cfg["worker_idle_timeout"]),
-            "--decoding-method",
-            str(cfg.get("decoding_method", "greedy_search")),
-            "--hotwords-file",
-            hotwords,
-            "--hotwords-score",
-            str(cfg.get("hotwords_score", 1.5)),
-            "--max-active-paths",
-            str(cfg.get("max_active_paths", 4)),
-            "--modeling-unit",
-            str(cfg.get("modeling_unit", "")),
-            "--bpe-vocab",
-            bpe_vocab,
-            "--asr-backend",
-            str(cfg.get("asr_backend", "moonshine")),
         ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,

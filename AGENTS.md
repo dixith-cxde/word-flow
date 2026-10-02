@@ -4,7 +4,7 @@ Offline hold-to-talk dictation for Linux Wayland (Hyprland on CachyOS primary, X
 
 # Repo state
 
-V1 service live (daemon + worker + recorder + client, 46 tests passing). ASR pivoted from Parakeet v3 int8 (~487 MB) to Moonshine-tiny q8; neural punct evaluated and rejected. Research → `docs/research.md`, measurements → `docs/benchmarks.md`.
+V1 service live (daemon + worker + recorder + client, 44 tests passing). ASR pivoted from Parakeet v3 int8 (~487 MB) to Moonshine-tiny q8; neural punct evaluated and rejected; transducer backend retired (0005). Research → `docs/research.md`, measurements → `docs/benchmarks.md`.
 
 # Constraints
 

@@ -7,16 +7,9 @@ from pathlib import Path
 
 DEFAULTS: dict = {
     "socket": "$XDG_RUNTIME_DIR/voxd.sock",
-    "asr_backend": "moonshine",  # moonshine | transducer (parakeet reference)
     "model_dir": "models/sherpa-onnx-moonshine-tiny-en-int8",
     "worker_idle_timeout": 25,  # seconds warm after last use, then worker exits
     "num_threads": 4,
-    "decoding_method": "greedy_search",  # or modified_beam_search + hotwords
-    "hotwords_file": "",
-    "hotwords_score": 1.5,
-    "max_active_paths": 4,
-    "modeling_unit": "",
-    "bpe_vocab": "",
     "insert_backend": "auto",  # auto | wtype | clipboard
     "dictionary": {},
     "snippets": {},
@@ -53,23 +46,6 @@ def load(path: Path | None = None) -> dict:
         raise ValueError(f"voxd config: worker_idle_timeout must be positive, got {timeout!r}")
     if cfg["insert_backend"] not in ("auto", "wtype", "clipboard"):
         raise ValueError(f"voxd config: bad insert_backend {cfg['insert_backend']!r}")
-    if cfg["decoding_method"] not in ("greedy_search", "modified_beam_search"):
-        raise ValueError(f"voxd config: bad decoding_method {cfg['decoding_method']!r}")
-    if not isinstance(cfg["max_active_paths"], int) or cfg["max_active_paths"] < 1:
-        raise ValueError(f"voxd config: bad max_active_paths {cfg['max_active_paths']!r}")
-    if not isinstance(cfg["hotwords_score"], (int, float)):
-        raise ValueError(f"voxd config: bad hotwords_score {cfg['hotwords_score']!r}")
-    if cfg["modeling_unit"] not in ("", "bpe", "cjkchar", "cjkchar+bpe", "bbpe"):
-        raise ValueError(f"voxd config: bad modeling_unit {cfg['modeling_unit']!r}")
-    if cfg["asr_backend"] not in ("moonshine", "transducer"):
-        raise ValueError(f"voxd config: bad asr_backend {cfg['asr_backend']!r}")
-    if cfg["asr_backend"] == "moonshine" and (
-        cfg.get("hotwords_file") or cfg.get("decoding_method") != "greedy_search"
-    ):
-        print(
-            "voxd config: hotwords/decoding_method ignored with asr_backend=moonshine",
-            file=sys.stderr,
-        )
     if "XDG_RUNTIME_DIR" not in os.environ and path == CONFIG_PATH:
         # Systemd user units always set XDG_RUNTIME_DIR, but bare contexts
         # (e.g. a compositor exec without the session env) may not. Prefer the

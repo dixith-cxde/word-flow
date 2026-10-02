@@ -256,10 +256,6 @@ def test_config_bad_values_rejected(tmp_path):
         "num_threads = 0\n",
         "worker_idle_timeout = -5\n",
         'insert_backend = "x"\n',
-        'decoding_method = "beam"\n',
-        "max_active_paths = 0\n",
-        "hotwords_score = 'high'\n",
-        'modeling_unit = "word"\n',
     )
     for body in bodies:
         p = tmp_path / "bad.toml"
@@ -268,34 +264,14 @@ def test_config_bad_values_rejected(tmp_path):
             config_mod.load(path=p)
 
 
-def test_config_hotwords_defaults(tmp_path):
-    cfg = config_mod.load(path=tmp_path / "missing.toml")
-    assert cfg["decoding_method"] == "greedy_search"
-    assert cfg["hotwords_file"] == ""
-    assert cfg["hotwords_score"] == 1.5
-    assert cfg["max_active_paths"] == 4
-    assert cfg["modeling_unit"] == ""
-    assert cfg["bpe_vocab"] == ""
-
-
-def test_config_asr_backend_default_moonshine(tmp_path):
-    cfg = config_mod.load(path=tmp_path / "missing.toml")
-    assert cfg["asr_backend"] == "moonshine"
-    assert cfg["model_dir"].endswith("sherpa-onnx-moonshine-tiny-en-int8")
-
-
-def test_config_bad_backend_rejected(tmp_path):
-    p = tmp_path / "bad.toml"
-    p.write_text('asr_backend = "whisper"\n')
-    with pytest.raises(ValueError):
-        config_mod.load(path=p)
-
-
-def test_config_moonshine_hotwords_warns(tmp_path, capsys):
-    p = tmp_path / "hotwords.toml"
+def test_config_removed_keys_warn_as_unknown(tmp_path, capsys):
+    # Transducer-era keys were retired with the backend; configs still
+    # carrying them warn instead of failing.
+    p = tmp_path / "old.toml"
     p.write_text('hotwords_file = "words.txt"\n')
-    config_mod.load(path=p)
-    assert "ignored with asr_backend=moonshine" in capsys.readouterr().err
+    cfg = config_mod.load(path=p)
+    assert "unknown key" in capsys.readouterr().err
+    assert "hotwords_file" not in cfg
 
 
 def test_config_snippet_dollar_preserved(tmp_path):

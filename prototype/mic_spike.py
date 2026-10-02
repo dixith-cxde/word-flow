@@ -4,7 +4,7 @@
 Usage:
     uv run --with ... (see below) / .venv/bin/python prototype/mic_spike.py --file <wav>
     .venv/bin/python prototype/mic_spike.py --mic   # asks before touching the mic
-    Backend defaults to moonshine (--asr-backend transducer for the Parakeet reference).
+    Backend defaults to moonshine (--asr-backend sensevoice + --model-dir for A/B).
 """
 
 import argparse
@@ -20,7 +20,6 @@ import sherpa_onnx
 ROOT = Path(__file__).resolve().parent.parent
 MODEL_DIRS = {
     "moonshine": ROOT / "models" / "sherpa-onnx-moonshine-tiny-en-int8",
-    "transducer": ROOT / "models" / "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
     "sensevoice": ROOT / "models" / "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
 }
 MODEL_FILES = {
@@ -31,7 +30,6 @@ MODEL_FILES = {
         "cached_decode.int8.onnx",
         "tokens.txt",
     ),
-    "transducer": ("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"),
     "sensevoice": ("model.int8.onnx", "tokens.txt"),
 }
 NUM_THREADS = 4
@@ -45,24 +43,9 @@ def create_recognizer(
     backend="moonshine",
     model_dir=None,
     threads=NUM_THREADS,
-    decoding="greedy_search",
-    hotwords="",
-    score=1.5,
-    modeling_unit="",
-    bpe_vocab="",
 ) -> tuple:
     t0 = time.perf_counter()
     model_dir = Path(model_dir) if model_dir else MODEL_DIRS[backend]
-    if backend == "moonshine":
-        recognizer = sherpa_onnx.OfflineRecognizer.from_moonshine(
-            preprocessor=str(model_dir / "preprocess.onnx"),
-            encoder=str(model_dir / "encode.int8.onnx"),
-            uncached_decoder=str(model_dir / "uncached_decode.int8.onnx"),
-            cached_decoder=str(model_dir / "cached_decode.int8.onnx"),
-            tokens=str(model_dir / "tokens.txt"),
-            num_threads=threads,
-        )
-        return recognizer, time.perf_counter() - t0
     if backend == "sensevoice":
         recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
             model=str(model_dir / "model.int8.onnx"),
@@ -72,22 +55,15 @@ def create_recognizer(
             use_itn=True,
         )
         return recognizer, time.perf_counter() - t0
-    recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
-        encoder=str(model_dir / "encoder.int8.onnx"),
-        decoder=str(model_dir / "decoder.int8.onnx"),
-        joiner=str(model_dir / "joiner.int8.onnx"),
+    if backend != "moonshine":
+        raise ValueError(f"unknown asr_backend: {backend!r}")
+    recognizer = sherpa_onnx.OfflineRecognizer.from_moonshine(
+        preprocessor=str(model_dir / "preprocess.onnx"),
+        encoder=str(model_dir / "encode.int8.onnx"),
+        uncached_decoder=str(model_dir / "uncached_decode.int8.onnx"),
+        cached_decoder=str(model_dir / "cached_decode.int8.onnx"),
         tokens=str(model_dir / "tokens.txt"),
         num_threads=threads,
-        sample_rate=16000,
-        feature_dim=80,
-        decoding_method=decoding,
-        max_active_paths=4,
-        hotwords_file=hotwords,
-        hotwords_score=score,
-        modeling_unit=modeling_unit,
-        bpe_vocab=bpe_vocab,
-        model_type="nemo_transducer",
-        provider="cpu",
     )
     return recognizer, time.perf_counter() - t0
 
@@ -164,14 +140,7 @@ def main() -> int:
     g.add_argument("--file", type=Path)
     g.add_argument("--mic", action="store_true")
     g.add_argument("--mic-secs", type=float, metavar="SECONDS")
-    ap.add_argument("--decoding", default="greedy_search")
-    ap.add_argument("--hotwords", default="")
-    ap.add_argument("--hotwords-score", type=float, default=1.5)
-    ap.add_argument("--modeling-unit", default="")
-    ap.add_argument("--bpe-vocab", default="")
-    ap.add_argument(
-        "--asr-backend", default="moonshine", choices=("moonshine", "transducer", "sensevoice")
-    )
+    ap.add_argument("--asr-backend", default="moonshine", choices=("moonshine", "sensevoice"))
     ap.add_argument("--model-dir", type=Path, default=None)
     args = ap.parse_args()
 
@@ -185,11 +154,6 @@ def main() -> int:
     recognizer, t_load = create_recognizer(
         backend=args.asr_backend,
         model_dir=args.model_dir,
-        decoding=args.decoding,
-        hotwords=args.hotwords,
-        score=args.hotwords_score,
-        modeling_unit=args.modeling_unit,
-        bpe_vocab=args.bpe_vocab,
     )
     print(f"model loaded in {t_load:.2f}s (threads={NUM_THREADS}, pid={os.getpid()})", flush=True)
     print(f"RSS loaded idle: {rss_mb():.0f} MB", flush=True)

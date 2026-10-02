@@ -49,8 +49,6 @@ def test_worker_transcribes_bundled_sample():
                 "2",
                 "--idle-timeout",
                 "60",
-                "--asr-backend",
-                "moonshine",
             ],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
@@ -73,12 +71,3 @@ def test_worker_transcribes_bundled_sample():
         finally:
             proc.terminate()
             proc.wait(timeout=30)
-
-
-def test_create_recognizer_rejects_unknown_backend():
-    from types import SimpleNamespace
-
-    from dictation import worker as worker_mod
-
-    with pytest.raises(ValueError, match="unknown asr_backend"):
-        worker_mod.create_recognizer("/nonexistent", 1, SimpleNamespace(asr_backend="whisper"))

@@ -131,6 +131,58 @@ def test_toggle_stops_when_recording(monkeypatch, capsys):
     assert capsys.readouterr().out == "hello\n"
 
 
+def test_pill_shows_on_start_and_dismisses_on_stop(monkeypatch, capsys):
+    from dictation import client as client_mod
+
+    pills = []
+    monkeypatch.setattr(client_mod, "_pill", pills.append)
+    monkeypatch.setattr(client_mod, "call", lambda sock, req, timeout=60: {"ok": True})
+    assert client_mod.main(["start", "--socket", "/nonexistent"]) == 0
+    assert pills == [True]
+    assert client_mod.main(["stop", "--socket", "/nonexistent"]) == 0
+    assert pills == [True, False]
+
+
+def test_pill_no_hyprctl_is_noop(monkeypatch):
+    from dictation import client as client_mod
+
+    monkeypatch.setattr(client_mod.shutil, "which", lambda _: None)
+    calls = []
+    monkeypatch.setattr(client_mod.subprocess, "run", lambda *a, **k: calls.append(a))
+    client_mod._pill(True)
+    client_mod._pill(False)
+    assert calls == []
+
+
+def test_pill_failure_never_breaks_client(monkeypatch):
+    from dictation import client as client_mod
+
+    monkeypatch.setattr(client_mod.shutil, "which", lambda _: "/usr/bin/hyprctl")
+
+    def boom(*a, **k):
+        raise OSError("hyprland not running")
+
+    monkeypatch.setattr(client_mod.subprocess, "run", boom)
+    client_mod._pill(True)  # must not raise
+    client_mod._pill(False)
+
+
+def test_stop_reports_silence(monkeypatch, tmp_path):
+    from dictation import client as client_mod
+    from dictation import daemon as daemon_mod
+
+    pcm = b"\x00" * 16000
+    monkeypatch.setattr(
+        daemon_mod, "_spawn_recorder", lambda: (_FakeProc(exited=0), [pcm], _DoneThread())
+    )
+    monkeypatch.setattr(daemon_mod, "_transcribe", lambda cfg, state, b: ("   ", 0.1))
+    _run_daemon_thread(sock_path := str(tmp_path / "d5.sock"), _daemon_cfg(sock_path, tmp_path))
+    assert client_mod.call(sock_path, {"cmd": "start"}) == {"ok": True}
+    resp = client_mod.call(sock_path, {"cmd": "stop"})
+    assert resp["ok"] is True
+    assert resp["text"] == "" and resp["backend"] == "none" and resp["note"] == "silence"
+
+
 def _run_daemon_thread(sock_path: str, cfg: dict) -> threading.Thread:
     from dictation import daemon as daemon_mod
 

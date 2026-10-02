@@ -2,7 +2,9 @@
 
 import argparse
 import json
+import shutil
 import socket
+import subprocess
 import sys
 
 from dictation import config as config_mod
@@ -10,6 +12,11 @@ from dictation import protocol as proto
 
 
 TIMEOUTS = {"status": 10.0, "start": 30.0, "stop": 120.0, "toggle": 120.0}
+
+# Hyprland overlay pill while recording: icon 1 (info), 60 s cap so a crashed
+# client can never leave it up for long; stop dismisses it immediately.
+_PILL_MESSAGE = "Listening…"
+_PILL_TIMEOUT_MS = "60000"
 
 
 def call(sock_path: str, req: dict, timeout: float = 60.0) -> dict:
@@ -20,6 +27,23 @@ def call(sock_path: str, req: dict, timeout: float = 60.0) -> dict:
         f = s.makefile("rwb")
         proto.send_json(s, req)
         return proto.recv_json(f.readline())
+
+
+def _pill(show: bool) -> None:
+    """Show/dismiss the Hyprland listening pill. Best-effort: never fails the command."""
+    if shutil.which("hyprctl") is None:
+        return
+    try:
+        if show:
+            subprocess.run(
+                ["hyprctl", "notify", "1", _PILL_TIMEOUT_MS, "0", _PILL_MESSAGE],
+                check=True,
+                timeout=5,
+            )
+        else:
+            subprocess.run(["hyprctl", "dismissnotify", "1"], check=True, timeout=5)
+    except Exception:
+        pass
 
 
 def main(argv=None) -> int:
@@ -47,9 +71,13 @@ def main(argv=None) -> int:
     except (OSError, ValueError) as e:
         print(f"vox: {e}", file=sys.stderr)
         return 1
-    if cmd == "stop" and resp.get("ok"):
-        print(resp.get("text", ""))
-        return 0
+    if cmd == "stop":
+        _pill(False)  # pill down the moment the key releases, whatever follows
+        if resp.get("ok"):
+            print(resp.get("text", ""))
+            return 0
+    if cmd == "start" and resp.get("ok"):
+        _pill(True)
     print(json.dumps(resp))
     return 0 if resp.get("ok") else 1
 

@@ -120,8 +120,21 @@ Measured against a scratch daemon (separate socket, `worker_idle_timeout=10`):
 - Bug found by this measurement: graceful recorder exit (code 0) was rejected
   as "recorder failed" — fixed (exit 0 now accepted; `test_stop_accepts_
   graceful_recorder_exit` pins it). Silence hallucinates
-  ("Is the least common one out of this rig?") — expected without VAD;
-  silero VAD trimming is still unwired (stack docs list it, no code uses it).
+  ("Is the least common one out of this rig?") — fixed with silero-VAD
+  trimming (see below).
+- `~/.config/voxd/config.toml` may carry a stale `vad_model` key from older
+  installs; current code owns that key again (default `models/silero_vad.onnx`,
+  `""` disables), so the warning is gone after reinstall.
+
+## Silence trim + listening pill (2026-10-02)
+
+- VAD: silero via sherpa `VoiceActivityDetector`, fed in 0.1 s streaming windows
+  (bulk feed starves it: 5k/106k kept vs 100k/106k chunked). Trim adds ~0.03 s
+  on 6.6 s audio. Pure silence (2 s zeros) → empty reply in 0.01 s, daemon
+  reports `note: silence`, nothing inserted. `--vad-model ""` disables.
+- Pill: `vox start` shows a Hyprland notify pill ("Listening…", 60 s failsafe
+  cap), `vox stop` dismisses it first thing. No hyprctl → silent no-op;
+  notify failure never breaks dictation (best-effort, tested with mocks).
 
 ## Still pending
 

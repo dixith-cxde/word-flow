@@ -13,6 +13,7 @@ import numpy as np
 import sherpa_onnx
 
 from dictation import protocol as proto
+from dictation import vad as vad_mod
 
 
 def create_recognizer(model_dir: str, num_threads: int) -> object:
@@ -26,10 +27,17 @@ def create_recognizer(model_dir: str, num_threads: int) -> object:
     )
 
 
-def serve(sock_path: str, recognizer, idle_timeout: float, conn_timeout: float = 30) -> None:
+def serve(
+    sock_path: str,
+    recognizer,
+    idle_timeout: float,
+    conn_timeout: float = 30,
+    vad_model: str = "",
+) -> None:
     srv = proto.bind_unix_socket(sock_path)
     srv.listen(1)
     srv.settimeout(idle_timeout)
+    detector = vad_mod.create_detector(vad_model) if vad_model else None
     while True:
         try:
             conn, _ = srv.accept()
@@ -41,6 +49,11 @@ def serve(sock_path: str, recognizer, idle_timeout: float, conn_timeout: float =
             try:
                 pcm = proto.read_frame(f)
             except (EOFError, ValueError, socket.timeout):
+                continue
+            pcm = vad_mod.trim_silence(pcm, detector)
+            if not pcm:  # silence only: reply empty, daemon reports it, nothing inserted
+                f.write(proto.pack_text(""))
+                f.flush()
                 continue
             samples = np.frombuffer(pcm, dtype=np.float32)
             stream = recognizer.create_stream()
@@ -57,9 +70,10 @@ def main() -> int:
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--idle-timeout", type=float, default=60)
     ap.add_argument("--conn-timeout", type=float, default=30)
+    ap.add_argument("--vad-model", default="")
     args = ap.parse_args()
     recognizer = create_recognizer(args.model_dir, args.threads)
-    serve(args.socket, recognizer, args.idle_timeout, args.conn_timeout)
+    serve(args.socket, recognizer, args.idle_timeout, args.conn_timeout, args.vad_model)
     return 0
 
 

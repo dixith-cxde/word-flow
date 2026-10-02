@@ -76,6 +76,7 @@ def _ensure_worker(cfg: dict, state: dict) -> None:
     if proc is not None and proc.poll() is None and os.path.exists(_worker_sock_path(cfg)):
         return
     model_dir = _resolve(cfg["model_dir"])
+    vad_model = _resolve(cfg.get("vad_model", ""))
     state["worker_proc"] = subprocess.Popen(
         [
             sys.executable,
@@ -88,6 +89,8 @@ def _ensure_worker(cfg: dict, state: dict) -> None:
             str(cfg["num_threads"]),
             "--idle-timeout",
             str(cfg["worker_idle_timeout"]),
+            "--vad-model",
+            vad_model,
         ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
@@ -190,6 +193,14 @@ def _handle(cfg: dict, state: dict, req: dict) -> dict:
         if not pcm:
             return {"ok": False, "error": "no audio captured"}
         text, decode_s = _transcribe(cfg, state, pcm)
+        if not text.strip():  # VAD found silence only: report it, insert nothing
+            return {
+                "ok": True,
+                "text": "",
+                "backend": "none",
+                "note": "silence",
+                "decode_s": round(decode_s, 2),
+            }
         cleaned = cleanup.clean(text, cfg.get("dictionary"), cfg.get("snippets"))
         try:
             backend = insert_mod.insert(cleaned, cfg.get("insert_backend", "auto"))

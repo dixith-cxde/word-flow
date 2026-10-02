@@ -7,7 +7,8 @@ from pathlib import Path
 
 DEFAULTS: dict = {
     "socket": "$XDG_RUNTIME_DIR/voxd.sock",
-    "model_dir": "models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+    "asr_backend": "moonshine",  # moonshine | transducer (parakeet reference)
+    "model_dir": "models/sherpa-onnx-moonshine-tiny-en-int8",
     "worker_idle_timeout": 25,  # seconds warm after last use, then worker exits
     "num_threads": 4,
     "decoding_method": "greedy_search",  # or modified_beam_search + hotwords
@@ -60,6 +61,8 @@ def load(path: Path | None = None) -> dict:
         raise ValueError(f"voxd config: bad hotwords_score {cfg['hotwords_score']!r}")
     if cfg["modeling_unit"] not in ("", "bpe", "cjkchar", "cjkchar+bpe", "bbpe"):
         raise ValueError(f"voxd config: bad modeling_unit {cfg['modeling_unit']!r}")
+    if cfg["asr_backend"] not in ("moonshine", "transducer"):
+        raise ValueError(f"voxd config: bad asr_backend {cfg['asr_backend']!r}")
     if "XDG_RUNTIME_DIR" not in os.environ and path == CONFIG_PATH:
         # Systemd user units always set XDG_RUNTIME_DIR, but bare contexts
         # (e.g. a compositor exec without the session env) may not. Prefer the

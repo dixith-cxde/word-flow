@@ -1,4 +1,4 @@
-"""Worker integration test: bundled wav PCM -> text (no mic, no daemon)."""
+"""Worker integration test: bundled moonshine wav PCM -> text (no mic, no daemon)."""
 
 import os
 import socket
@@ -13,8 +13,8 @@ import pytest
 from dictation import protocol as proto
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_DIR = os.path.join(REPO_ROOT, "models", "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8")
-WAV = os.path.join(MODEL_DIR, "test_wavs", "en.wav")
+MODEL_DIR = os.path.join(REPO_ROOT, "models", "sherpa-onnx-moonshine-tiny-en-int8")
+WAV = os.path.join(MODEL_DIR, "test_wavs", "0.wav")
 
 needs_models = pytest.mark.skipif(
     not (os.path.isdir(MODEL_DIR) and os.path.isfile(WAV)),
@@ -27,14 +27,14 @@ def _wav_pcm_16k(path: str) -> bytes:
         assert w.getnchannels() == 1 and w.getsampwidth() == 2
         sr = w.getframerate()
         raw = w.readframes(w.getnframes())
+    assert sr == 16000  # moonshine test wavs are native 16 kHz
     samples = np.frombuffer(raw, dtype=np.int16).astype("float32") / 32768.0
-    return sr, samples.tobytes()
+    return samples.tobytes()
 
 
 @needs_models
 def test_worker_transcribes_bundled_sample():
-    sr, pcm = _wav_pcm_16k(WAV)
-    assert sr == 24000  # worker resamples internally; pin the fixture assumption
+    pcm = _wav_pcm_16k(WAV)
     with tempfile.TemporaryDirectory() as d:
         sock = os.path.join(d, "w.sock")
         proc = subprocess.Popen(
@@ -49,12 +49,14 @@ def test_worker_transcribes_bundled_sample():
                 "2",
                 "--idle-timeout",
                 "60",
+                "--asr-backend",
+                "moonshine",
             ],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
         )
         try:
-            for _ in range(600):  # wait for cold load (~2 s)
+            for _ in range(600):  # wait for cold load (~1 s)
                 if os.path.exists(sock):
                     break
                 if proc.poll() is not None:
@@ -67,7 +69,7 @@ def test_worker_transcribes_bundled_sample():
                 f.write(proto.pack_pcm(pcm))
                 f.flush()
                 text = proto.read_frame(f).decode()
-            assert "country" in text
+            assert "yellow lamps" in text
         finally:
             proc.terminate()
             proc.wait(timeout=30)

@@ -81,14 +81,34 @@ Findings on i5-1235U, threads=4, 4–5 s utterances:
 - Warm RSS ~934 MB cgroup total; unloaded listener 12–28 MB (confirm post-idle drop live).
 - Transcription WER ~14% on jargon-dense read speech; conversational speech scores better.
 
+## Moonshine-tiny service (Phase 3, 2026-10-02 — current stack, see `decisions/0003`)
+
+Stack: Moonshine tiny q8 ASR (English-only, no neural punct stage — ASR punctuates
+natively; spoken-punct/ITN are deterministic rules in `cleanup.py`).
+
+Versions: `sherpa-onnx 1.13.8`, `sounddevice 0.5.6`, `numpy 2.5.3`,
+model `sherpa-onnx-moonshine-tiny-en-int8` (27M params, ~119 MB shipped files).
+Dev: `pytest 9.1.1`, `ruff 0.16.9`. One-shot quant tools (punct eval only, not shipped):
+`onnx 1.23.1`, `onnxruntime 1.30.0`.
+
+Measured on i5-1235U, threads=4:
+
+- Cold start (import + model load to ready): 0.79 s (vs 1.8–2.3 s Parakeet).
+- Worker peak RSS (`/proc` VmHWM, load + 16.7 s decode): 286 MB (vs ~810 MB Parakeet).
+- Decode: bundled `0.wav` (6.6 s): 0.19 s; `1.wav` (16.7 s): 0.68 s roundtrip.
+  5 s utterance scales to ~0.2–0.3 s — inside the 700 ms budget with wide margin.
+- Sample transcript (verbatim, includes native `, .`):
+  `After early nightfall, the yellow lamps would light up here and there ... brothels.`
+- Shipped model footprint: ~119 MB (moonshine int8 files minus test wavs) —
+  inside the ≤200 MB combined budget with room for the future grammar SLM.
+- Rejected: `sherpa-onnx-punct-ct-transformer-zh-en` (FunASR zh-common conversion).
+  Emits fullwidth `。，？` and duplicates Moonshine's native marks (`,，`, ` .。`).
+  int8 quant of it verified parity 3/3 at 3 ms (294→75 MB) — method kept, model dropped.
+
 ## Still pending
 
-- End-of-audio → text for exact 10 s / 30 s brackets (covered approximately: 7.7 s, 16.6 s, 45 s).
+- End-to-end hold-key run against the moonshine worker (service wiring unchanged,
+  daemon-tested with mocks; live mic check pending).
 - `wtype` insertion into XWayland/Electron apps (native Wayland verified).
-
-- End-of-audio → text for 10 s and 30 s utterances; WER on technical text;
-  `sounddevice` host-API check on this PipeWire box; `wtype` end-to-end insertion check.
-
-- RSS: model unloaded / loaded-idle / peak (5 s and 30 s utterances) / after unload.
-- Latency: cold start request→ready, warm latency, end-of-audio→text (3/10/30 s).
-- WER on a short technical script read aloud.
+- Exact 10 s / 30 s utterance brackets on the new stack.
+- Grammar SLM iteration gated on punct/grammar error rate (see `future.md` §1).

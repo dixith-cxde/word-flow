@@ -102,6 +102,8 @@ def _ensure_worker(cfg: dict, state: dict) -> None:
             str(cfg.get("modeling_unit", "")),
             "--bpe-vocab",
             bpe_vocab,
+            "--asr-backend",
+            str(cfg.get("asr_backend", "moonshine")),
         ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,

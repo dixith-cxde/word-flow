@@ -6,6 +6,7 @@ from dictation.cleanup import (
     clean,
     collapse_repeats,
     expand_snippets,
+    normalize_spoken,
     remove_fillers,
     tidy_spacing,
 )
@@ -82,3 +83,23 @@ def test_snippet_phrase_longest_first():
 def test_snippet_cue_case_insensitive():
     out = expand_snippets("see MyEmail", {"myemail": "me@example.com"})
     assert out == "see me@example.com"
+
+
+def test_spoken_punctuation_mapped():
+    assert normalize_spoken("hello dot com") == "hello . com"
+    assert normalize_spoken("wait question mark") == "wait ?"
+    assert normalize_spoken("well comma let's go") == "well , let's go"
+
+
+def test_spoken_punctuation_longest_first():
+    assert normalize_spoken("stop full stop now") == "stop . now"
+    assert normalize_spoken("wow exclamation mark") == "wow !"
+
+
+def test_spoken_punctuation_case_insensitive():
+    assert normalize_spoken("End Dot Here") == "End . Here"
+
+
+def test_clean_applies_spoken_punctuation():
+    assert clean("call mom dot com") == "Call mom. com"
+    assert clean("are you coming question mark") == "Are you coming?"

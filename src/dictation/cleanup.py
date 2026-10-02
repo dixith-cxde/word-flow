@@ -54,7 +54,7 @@ def capitalize_first(text: str) -> str:
 def apply_dictionary(text: str, mapping: dict[str, str]) -> str:
     """Whole-word replacements, case-insensitive (e.g. {"pipewire": "PipeWire"})."""
     for wrong, right in mapping.items():
-        text = re.sub(rf"\b{re.escape(wrong)}\b", right, text, flags=re.IGNORECASE)
+        text = re.sub(rf"\b{re.escape(wrong)}\b", lambda m: right, text, flags=re.IGNORECASE)
     return text
 
 
@@ -69,14 +69,41 @@ def expand_snippets(text: str, snippets: dict[str, str]) -> str:
     return text
 
 
+SPOKEN_PUNCT = {
+    "full stop": ".",
+    "exclamation mark": "!",
+    "exclamation point": "!",
+    "question mark": "?",
+    "semicolon": ";",
+    "period": ".",
+    "comma": ",",
+    "colon": ":",
+    "dot": ".",
+}
+
+
+def normalize_spoken(text: str) -> str:
+    """Map dictated punctuation words to marks ("dot" -> "."), longest cue first.
+
+    Known limitation: bare words always map, so "a period of time" becomes
+    "a . of time". Mitigate with dictionary/snippet wording or a grammar
+    post-pass (see docs/future.md); the mapping itself stays deterministic.
+    """
+    for cue in sorted(SPOKEN_PUNCT, key=lambda c: (-len(c.split()), -len(c))):
+        mark = SPOKEN_PUNCT[cue]
+        text = re.sub(rf"\b{re.escape(cue)}\b", lambda m: mark, text, flags=re.IGNORECASE)
+    return text
+
+
 def clean(
     text: str,
     dictionary: dict[str, str] | None = None,
     snippets: dict[str, str] | None = None,
 ) -> str:
-    """Full pipeline: fillers -> repeats -> dictionary -> snippets -> tidy -> case."""
+    """Full pipeline: fillers -> repeats -> spoken punct -> dict -> snippets -> tidy -> case."""
     text = remove_fillers(text)
     text = collapse_repeats(text)
+    text = normalize_spoken(text)
     text = apply_dictionary(text, dictionary or {})
     text = expand_snippets(text, snippets or {})
     text = tidy_spacing(text)

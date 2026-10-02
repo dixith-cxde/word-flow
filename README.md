@@ -4,7 +4,7 @@ Offline hold-to-talk voice dictation for Linux Wayland.
 
 Hold a key, speak, release — transcribed text is inserted at the cursor in any application. Fully offline after model download.
 
-V1: English only, Hyprland primary (GNOME toggle supported), no streaming, no GUI, no X11. See `docs/spec.md`.
+V1: English only, Hyprland primary (GNOME toggle supported), no streaming, no GUI, no X11. Stack: Moonshine-tiny ASR (q8, ~34 MB, punctuates natively) + deterministic cleanup. See `docs/spec.md` and `docs/decisions/0002-tiny-stack.md` (amended by `0003-no-neural-punct.md`).
 
 ## Requirements
 
@@ -21,7 +21,7 @@ V1: English only, Hyprland primary (GNOME toggle supported), no streaming, no GU
 ```
 
 - Default key: `F9` (Hyprland hold, GNOME toggle).
-- `--with-models` downloads Parakeet v3 int8 (~487 MB) + silero-vad. Opt-in only.
+- `--with-models` downloads Moonshine-tiny q8 (~34 MB) + punct model + silero-vad. Opt-in only.
 - Installs venv to `~/.local/share/voxd`, shims to `~/.local/bin`, service to `~/.config/systemd/user/voxd.service`, config to `~/.config/voxd/config.toml`.
 
 Verify: focus a text editor, hold `KEY`, speak, release.

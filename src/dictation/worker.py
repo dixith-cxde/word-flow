@@ -16,23 +16,34 @@ from dictation import protocol as proto
 
 
 def create_recognizer(model_dir: str, num_threads: int, args) -> object:
-    return sherpa_onnx.OfflineRecognizer.from_transducer(
-        encoder=os.path.join(model_dir, "encoder.int8.onnx"),
-        decoder=os.path.join(model_dir, "decoder.int8.onnx"),
-        joiner=os.path.join(model_dir, "joiner.int8.onnx"),
-        tokens=os.path.join(model_dir, "tokens.txt"),
-        num_threads=num_threads,
-        sample_rate=proto.SAMPLE_RATE,
-        feature_dim=80,
-        decoding_method=args.decoding_method,
-        max_active_paths=args.max_active_paths,
-        hotwords_file=args.hotwords_file,
-        hotwords_score=args.hotwords_score,
-        modeling_unit=args.modeling_unit,
-        bpe_vocab=args.bpe_vocab,
-        model_type="nemo_transducer",
-        provider="cpu",
-    )
+    backend = getattr(args, "asr_backend", "moonshine")
+    if backend == "moonshine":
+        return sherpa_onnx.OfflineRecognizer.from_moonshine(
+            preprocessor=os.path.join(model_dir, "preprocess.onnx"),
+            encoder=os.path.join(model_dir, "encode.int8.onnx"),
+            uncached_decoder=os.path.join(model_dir, "uncached_decode.int8.onnx"),
+            cached_decoder=os.path.join(model_dir, "cached_decode.int8.onnx"),
+            tokens=os.path.join(model_dir, "tokens.txt"),
+            num_threads=num_threads,
+        )
+    if backend == "transducer":
+        return sherpa_onnx.OfflineRecognizer.from_transducer(
+            encoder=os.path.join(model_dir, "encoder.int8.onnx"),
+            decoder=os.path.join(model_dir, "decoder.int8.onnx"),
+            joiner=os.path.join(model_dir, "joiner.int8.onnx"),
+            tokens=os.path.join(model_dir, "tokens.txt"),
+            num_threads=num_threads,
+            sample_rate=proto.SAMPLE_RATE,
+            feature_dim=80,
+            decoding_method=args.decoding_method,
+            max_active_paths=args.max_active_paths,
+            hotwords_file=args.hotwords_file,
+            hotwords_score=args.hotwords_score,
+            modeling_unit=args.modeling_unit,
+            bpe_vocab=args.bpe_vocab,
+            model_type="nemo_transducer",
+            provider="cpu",
+        )
 
 
 def serve(sock_path: str, recognizer, idle_timeout: float, conn_timeout: float = 30) -> None:
@@ -72,6 +83,7 @@ def main() -> int:
     ap.add_argument("--max-active-paths", type=int, default=4)
     ap.add_argument("--modeling-unit", default="")
     ap.add_argument("--bpe-vocab", default="")
+    ap.add_argument("--asr-backend", default="moonshine", choices=("moonshine", "transducer"))
     args = ap.parse_args()
     recognizer = create_recognizer(args.model_dir, args.threads, args)
     serve(args.socket, recognizer, args.idle_timeout, args.conn_timeout)

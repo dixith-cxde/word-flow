@@ -278,6 +278,19 @@ def test_config_hotwords_defaults(tmp_path):
     assert cfg["bpe_vocab"] == ""
 
 
+def test_config_asr_backend_default_moonshine(tmp_path):
+    cfg = config_mod.load(path=tmp_path / "missing.toml")
+    assert cfg["asr_backend"] == "moonshine"
+    assert cfg["model_dir"].endswith("sherpa-onnx-moonshine-tiny-en-int8")
+
+
+def test_config_bad_backend_rejected(tmp_path):
+    p = tmp_path / "bad.toml"
+    p.write_text('asr_backend = "whisper"\n')
+    with pytest.raises(ValueError):
+        config_mod.load(path=p)
+
+
 def test_config_snippet_dollar_preserved(tmp_path):
     p = tmp_path / "config.toml"
     p.write_text('[snippets]\n"show home" = "echo $HOME"\n')

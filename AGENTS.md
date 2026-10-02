@@ -1,16 +1,16 @@
 # Scope
 
-Offline hold-to-talk dictation for Linux Wayland (Hyprland on CachyOS primary, X11 deferred). Fully offline after model download. Spec: `docs/spec.md`; V1 is English only, no streaming, LM cleanup, GUI, or X11.
+Offline hold-to-talk dictation for Linux Wayland (Hyprland on CachyOS primary, X11 deferred). Fully offline after model download. Spec: `docs/spec.md`; V1 is English only, no streaming, GUI, or X11. Stack (see `docs/decisions/0002-tiny-stack.md`, amended by `0003-no-neural-punct.md`): Moonshine-tiny ASR (English-only, int8, punctuates natively) + deterministic text rules in `cleanup.py` (spoken-punct, fillers, tidy). Models on disk ~119 MB (budget ≤200 MB). Grammar-correction SLM deferred to next iteration, gated on measured error rate.
 
 # Repo state
 
-Pre-scaffold: no stack, code, or commands. No installs, downloads, recording, or prototype code until `docs/decisions/0001-stack.md` is approved. Research → `docs/research.md`, measurements → `docs/benchmarks.md`.
+V1 service live (daemon + worker + recorder + client, 46 tests passing). ASR pivoted from Parakeet v3 int8 (~487 MB) to Moonshine-tiny q8; neural punct evaluated and rejected. Research → `docs/research.md`, measurements → `docs/benchmarks.md`.
 
 # Constraints
 
 - Owner knows Go/TS/Python; any other language needs written justification in `docs/decisions`.
-- Event-driven, 0% idle CPU. Mic open only while key held. Compositor keybinding signals the service (no global hotkey capture). Model loads on key-down, unloads after idle timeout with memory returned to OS (worker exit OK). Text cleanup is pure functions with unit tests.
-- Budgets (confirm by measurement): idle <30MB RSS, <150ms key-to-record, <700ms release-to-text for 5s utterance.
+- Event-driven, 0% idle CPU. Mic open only while key held. Compositor keybinding signals the service (no global hotkey capture). Models load on key-down, unload after idle timeout with memory returned to OS (worker exit OK). Pipeline: transcribe (ASR punctuates natively) → spoken-punct normalize → `cleanup.clean()` → insert. Text cleanup + spoken-punct pre-pass are pure functions with unit tests.
+- Budgets (confirm by measurement): idle <30MB RSS, <150ms key-to-record, <700ms release-to-text for 5s utterance. Warm-peak measured ~286MB RSS (Moonshine-tiny q8, i5-1235U).
 - Keep OS interaction (trigger / capture / insert / autostart) behind narrow interfaces so other platforms need only new backends.
 
 # Rules

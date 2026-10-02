@@ -62,7 +62,12 @@ class Pill:
         self.win.set_resizable(False)
         LayerShell.init_for_window(self.win)
         LayerShell.set_layer(self.win, LayerShell.Layer.TOP)
+        # Anchor left+right with a centered child: the window spans the output
+        # width (transparent) while the pill itself stays top-center. Anchoring
+        # top-only leaves the window an arbitrary size and the pill off-center.
         LayerShell.set_anchor(self.win, LayerShell.Edge.TOP, True)
+        LayerShell.set_anchor(self.win, LayerShell.Edge.LEFT, True)
+        LayerShell.set_anchor(self.win, LayerShell.Edge.RIGHT, True)
         LayerShell.set_margin(self.win, LayerShell.Edge.TOP, 12)
         LayerShell.set_exclusive_zone(self.win, 0)
         LayerShell.set_keyboard_mode(self.win, LayerShell.KeyboardMode.NONE)
@@ -73,6 +78,8 @@ class Pill:
         )
         self.box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         self.box.add_css_class("pill")
+        self.box.set_halign(Gtk.Align.CENTER)
+        self.box.set_valign(Gtk.Align.START)
         self.dot = Gtk.Label(label="●")
         self.dot.add_css_class("dot")
         self.label = Gtk.Label(label="")

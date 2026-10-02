@@ -17,7 +17,7 @@ V1: English only, Hyprland primary (GNOME toggle supported), no streaming, no GU
 ## Install
 
 ```sh
-./install.sh [--key KEY] [--with-models]
+./setup.sh [--key KEY] [--with-models] [--clean-models] [--uninstall]
 ```
 
 - Default key: `F9` (Hyprland hold, GNOME toggle).

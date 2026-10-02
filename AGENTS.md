@@ -23,8 +23,8 @@ V1 service live (daemon + worker + recorder + client, 53 tests passing). ASR piv
 - Setup: `uv venv .venv && uv pip install -e ".[dev]"`
 - Install (home dir + service + keybind): `./install.sh [--key KEY] [--with-models]`
 - Test: `.venv/bin/python -m pytest -q`
-- Lint: `.venv/bin/ruff check src tests prototype`
-- Format: `.venv/bin/ruff format src tests prototype` (CI checks `--check`)
+- Lint: `.venv/bin/ruff check src tests prototype ui`
+- Format: `.venv/bin/ruff format src tests prototype ui` (CI checks `--check`)
 - Hooks: `.venv/bin/pre-commit run --all-files` (whitespace, private-key scan, ruff)
 - Spike: `.venv/bin/python prototype/mic_spike.py --file <wav>` |
   `--mic` (interactive Enter start/stop) | `--mic-secs N`

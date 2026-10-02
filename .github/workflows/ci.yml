@@ -11,6 +11,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      - run: ruff check src tests prototype
-      - run: ruff format --check src tests prototype
+      - run: ruff check src tests prototype ui
+      - run: ruff format --check src tests prototype ui
       - run: python -m pytest -q

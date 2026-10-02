@@ -163,58 +163,88 @@ def _handle(cfg: dict, state: dict, req: dict) -> dict:
             state["recorder"] = proc
             state["rec_chunks"] = chunks
             state["rec_thread"] = thread
+        _publish(state, {"event": "recording"})
         return {"ok": True}
     if cmd == "stop":
-        with state["lock"]:
-            proc = state.pop("recorder", None)
-            chunks = state.pop("rec_chunks", [])
-            thread = state.pop("rec_thread", None)
-        if proc is None:
-            return {"ok": False, "error": "not recording"}
-        if proc.poll() is None:
-            proc.terminate()
-        _reap(proc, thread)
-        # Exit 0 is the common graceful path: the recorder catches our SIGTERM,
-        # drains its final block, flushes, and returns normally. -SIGTERM is the
-        # same request landing mid-block. Anything else is a real failure.
-        if proc.returncode not in (0, -signal.SIGTERM, -signal.SIGINT):
-            return {
-                "ok": False,
-                "error": f"recorder failed (exit {proc.returncode}); "
-                "see journal for RECORDER_ERROR",
-            }
-        pcm = b"".join(chunks)
-        dur_s = len(pcm) / 4 / proto.SAMPLE_RATE
-        if len(pcm) > proto.MAX_PCM_BYTES:
-            return {
-                "ok": False,
-                "error": f"utterance too long ({dur_s:.0f}s > {proto.MAX_UTTERANCE_S}s), discarded",
-            }
-        if not pcm:
-            return {"ok": False, "error": "no audio captured"}
-        text, decode_s = _transcribe(cfg, state, pcm)
-        if not text.strip():  # VAD found silence only: report it, insert nothing
-            return {
-                "ok": True,
-                "text": "",
-                "backend": "none",
-                "note": "silence",
-                "decode_s": round(decode_s, 2),
-            }
-        cleaned = cleanup.clean(text, cfg.get("dictionary"), cfg.get("snippets"))
-        try:
-            backend = insert_mod.insert(cleaned, cfg.get("insert_backend", "auto"))
-        except Exception as e:  # keep the text even if insertion fails
-            return {
-                "ok": True,
-                "text": cleaned,
-                "backend": "failed",
-                "warning": str(e),
-                "decode_s": round(decode_s, 2),
-            }
-        print(json.dumps({"decode_s": round(decode_s, 2), "pcm_bytes": len(pcm)}), flush=True)
-        return {"ok": True, "text": cleaned, "backend": backend, "decode_s": round(decode_s, 2)}
+        resp = _do_stop(cfg, state)
+        _publish(
+            state,
+            {"event": "done", "ok": resp.get("ok", False), "text": resp.get("text", "")},
+        )
+        return resp
     return {"ok": False, "error": f"unknown cmd: {cmd}"}
+
+
+def _do_stop(cfg: dict, state: dict) -> dict:
+    with state["lock"]:
+        proc = state.pop("recorder", None)
+        chunks = state.pop("rec_chunks", [])
+        thread = state.pop("rec_thread", None)
+    if proc is None:
+        return {"ok": False, "error": "not recording"}
+    _publish(state, {"event": "transcribing"})
+    if proc.poll() is None:
+        proc.terminate()
+    _reap(proc, thread)
+    # Exit 0 is the common graceful path: the recorder catches our SIGTERM,
+    # drains its final block, flushes, and returns normally. -SIGTERM is the
+    # same request landing mid-block. Anything else is a real failure.
+    if proc.returncode not in (0, -signal.SIGTERM, -signal.SIGINT):
+        return {
+            "ok": False,
+            "error": f"recorder failed (exit {proc.returncode}); see journal for RECORDER_ERROR",
+        }
+    pcm = b"".join(chunks)
+    dur_s = len(pcm) / 4 / proto.SAMPLE_RATE
+    if len(pcm) > proto.MAX_PCM_BYTES:
+        return {
+            "ok": False,
+            "error": f"utterance too long ({dur_s:.0f}s > {proto.MAX_UTTERANCE_S}s), discarded",
+        }
+    if not pcm:
+        return {"ok": False, "error": "no audio captured"}
+    text, decode_s = _transcribe(cfg, state, pcm)
+    if not text.strip():  # VAD found silence only: report it, insert nothing
+        return {
+            "ok": True,
+            "text": "",
+            "backend": "none",
+            "note": "silence",
+            "decode_s": round(decode_s, 2),
+        }
+    cleaned = cleanup.clean(text, cfg.get("dictionary"), cfg.get("snippets"))
+    try:
+        backend = insert_mod.insert(cleaned, cfg.get("insert_backend", "auto"))
+    except Exception as e:  # keep the text even if insertion fails
+        return {
+            "ok": True,
+            "text": cleaned,
+            "backend": "failed",
+            "warning": str(e),
+            "decode_s": round(decode_s, 2),
+        }
+    print(json.dumps({"decode_s": round(decode_s, 2), "pcm_bytes": len(pcm)}), flush=True)
+    return {"ok": True, "text": cleaned, "backend": backend, "decode_s": round(decode_s, 2)}
+
+
+def _publish(state: dict, event: dict) -> None:
+    """Broadcast a state event to pill/tray subscribers. Best-effort: a dead
+    subscriber is dropped, never blocks dictation."""
+    line = (json.dumps(event) + "\n").encode()
+    with state["lock"]:
+        subs = state.setdefault("subs", [])
+        alive = []
+        for conn in subs:
+            try:
+                conn.sendall(line)
+            except OSError:
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+            else:
+                alive.append(conn)
+        state["subs"] = alive
 
 
 def _serve_conn(conn, cfg: dict, state: dict) -> None:
@@ -230,11 +260,29 @@ def _serve_conn(conn, cfg: dict, state: dict) -> None:
             req = proto.recv_json(line)
         except ValueError:
             resp = {"ok": False, "error": "bad json"}
-        else:
+            f.write((json.dumps(resp) + "\n").encode())
+            f.flush()
+            return
+        if req.get("cmd") == "subscribe":
+            # Event feed for the pill/tray: hold the connection open, ignore
+            # further input, unregister on EOF. Replies with one ack line.
+            f.write((json.dumps({"ok": True}) + "\n").encode())
+            f.flush()
+            with state["lock"]:
+                state.setdefault("subs", []).append(conn)
             try:
-                resp = _handle(cfg, state, req)
-            except Exception as e:
-                resp = {"ok": False, "error": str(e)}
+                while f.readline():
+                    pass
+            finally:
+                with state["lock"]:
+                    subs = state.get("subs", [])
+                    if conn in subs:
+                        subs.remove(conn)
+            return
+        try:
+            resp = _handle(cfg, state, req)
+        except Exception as e:
+            resp = {"ok": False, "error": str(e)}
         f.write((json.dumps(resp) + "\n").encode())
         f.flush()
 

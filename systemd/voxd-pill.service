@@ -1,0 +1,12 @@
+[Unit]
+Description=voxd listening pill (Wayland overlay)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/voxd-pill
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

@@ -183,6 +183,54 @@ def test_stop_reports_silence(monkeypatch, tmp_path):
     assert resp["text"] == "" and resp["backend"] == "none" and resp["note"] == "silence"
 
 
+def test_subscribe_receives_recording_transcribing_done(monkeypatch, tmp_path):
+    from dictation import client as client_mod
+    from dictation import daemon as daemon_mod
+    from dictation import protocol as proto
+
+    pcm = b"\x00" * 16000
+    monkeypatch.setattr(
+        daemon_mod, "_spawn_recorder", lambda: (_FakeProc(exited=0), [pcm], _DoneThread())
+    )
+    monkeypatch.setattr(daemon_mod, "_transcribe", lambda cfg, state, b: ("hi", 0.1))
+    monkeypatch.setattr(daemon_mod.insert_mod, "insert", lambda text, backend="auto": "wtype")
+    sock_path = str(tmp_path / "ev.sock")
+    _run_daemon_thread(sock_path, _daemon_cfg(sock_path, tmp_path))
+
+    events = []
+    stop = threading.Event()
+
+    def _listen():
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        with s:
+            s.connect(sock_path)
+            f = s.makefile("rwb")
+            proto.send_json(s, {"cmd": "subscribe"})
+            assert proto.recv_json(f.readline()) == {"ok": True}
+            s.settimeout(10.0)
+            while not stop.is_set():
+                try:
+                    line = f.readline()
+                except OSError:
+                    return
+                if not line:
+                    return
+                events.append(proto.recv_json(line))
+
+    t = threading.Thread(target=_listen)
+    t.start()
+    time.sleep(0.3)  # let the subscriber register
+    assert client_mod.call(sock_path, {"cmd": "start"}) == {"ok": True}
+    assert client_mod.call(sock_path, {"cmd": "stop"})["ok"] is True
+    deadline = time.monotonic() + 10
+    while len(events) < 3 and time.monotonic() < deadline:
+        time.sleep(0.1)
+    stop.set()
+    t.join(timeout=10)
+    assert [e["event"] for e in events] == ["recording", "transcribing", "done"]
+    assert events[2]["ok"] is True and events[2]["text"] == "Hi"
+
+
 def _run_daemon_thread(sock_path: str, cfg: dict) -> threading.Thread:
     from dictation import daemon as daemon_mod
 

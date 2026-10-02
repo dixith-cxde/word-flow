@@ -33,21 +33,23 @@ except (ImportError, ValueError) as e:
 CSS = b"""
 window { background: transparent; }
 .pill {
-  background: rgba(20, 22, 28, 0.92);
+  background: linear-gradient(to bottom, rgba(26, 28, 36, 0.96), rgba(15, 17, 23, 0.96));
   border-radius: 999px;
-  padding: 8px 22px;
-  color: #e8e8e8;
-  font-size: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 10px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
 }
-.pill.recording { border-color: #ff5f57; }
-.pill.recording label { color: #ff8f88; animation: pulse 1.1s ease-in-out infinite; }
-.pill.working label { color: #9ecbff; }
-.pill.done { border-color: #3fb950; }
-.pill.done label { color: #7ee2a8; }
-.pill.error { border-color: #ff5f57; }
-.pill.error label { color: #ff8f88; }
-@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.45; } 100% { opacity: 1; } }
+.pill label { color: #e8eaed; font-size: 14px; font-weight: 500; letter-spacing: 0.2px; }
+.pill .dot { font-size: 11px; }
+.pill.recording { border-color: rgba(255, 95, 87, 0.55); }
+.pill.recording .dot { color: #ff5f57; animation: pulse 1.1s ease-in-out infinite; }
+.pill.working { border-color: rgba(88, 166, 255, 0.45); }
+.pill.working .dot { color: #58a6ff; animation: breathe 1.6s ease-in-out infinite; }
+.pill.done { border-color: rgba(63, 185, 80, 0.55); }
+.pill.done .dot { color: #3fb950; }
+.pill.error { border-color: rgba(255, 95, 87, 0.55); }
+.pill.error .dot { color: #ff5f57; }
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.35; } 100% { opacity: 1; } }
+@keyframes breathe { 0% { opacity: 1; } 50% { opacity: 0.55; } 100% { opacity: 1; } }
 """
 
 _HIDE_AFTER_S = 2
@@ -69,9 +71,14 @@ class Pill:
         Gtk.StyleContext.add_provider_for_display(
             self.win.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
-        self.box = Gtk.Box()
+        self.box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         self.box.add_css_class("pill")
+        self.dot = Gtk.Label(label="●")
+        self.dot.add_css_class("dot")
         self.label = Gtk.Label(label="")
+        self.label.set_ellipsize(True)
+        self.label.set_max_width_chars(60)
+        self.box.append(self.dot)
         self.box.append(self.label)
         self.win.set_child(self.box)
         self._hide_timer = None

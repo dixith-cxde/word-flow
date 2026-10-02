@@ -112,3 +112,32 @@ Measured on i5-1235U, threads=4:
 - `wtype` insertion into XWayland/Electron apps (native Wayland verified).
 - Exact 10 s / 30 s utterance brackets on the new stack.
 - Grammar SLM iteration gated on punct/grammar error rate (see `future.md` §1).
+
+## ASR A/B (2026-10-02 — verdict: stay with tiny, see `decisions/0004-stay-with-tiny.md`)
+
+Contenders (threads=4, i5-1235U, separate process per run, peak = `ru_maxrss`):
+
+- A: Moonshine tiny q8 (control, ~119 MB shipped)
+- B: Moonshine base-en int8 (~275 MB shipped)
+- C: SenseVoice-Small int8 + `use_itn=True` (~229 MB shipped)
+
+Fixtures: `/tmp/para-take1.wav` (user mic, 19.0 s — since moved to `audio/`),
+`audio/tech1-3.wav` (resampled 22.05→16 kHz), moonshine `0.wav` (6.6 s, literary).
+
+| clip | A tiny: decode / peak / key terms | B base: decode / peak / key terms | C sensevoice: decode / peak / key terms |
+|---|---|---|---|
+| para (19 s, "PipeWire graph", "Mike/mic", "example dot com") | 0.67 s / 324 MB. "pipeline graph"; "So, enter according to my example.com"; mic✓ | 0.94 s / **499 MB**. "pipe wire graph"; "Send that according to mike@example.com"; "mike" for mic✗ | 0.66 s / 367 MB. "paragraph"; "send there according to mic at example. co"; mic✓, ITN punct✓ |
+| tech1 ("systemd unit … PipeWire … Hyprland startup") | 0.16 s / 201 MB. "system the unit … pipeline graph … hyperland" | 0.20 s / 331 MB. "pipe while a graph" (worse) | 0.21 s / 330 MB. "reunit … pipeline wire … hyperland target" (worse) |
+| tech2 ("unix socket … wayland compositor") | 0.14 s / 204 MB. "unique socket … composite" | 0.50 s / 336 MB. "unique socket … **compositor**✓" | 0.24 s / 334 MB. "Checkck sockets … waylandcomp" (stutter + run-on) |
+| tech3 ("quantized transducer … real time") | 0.14 s / 200 MB. "**transducer**✓ … cereal time" | 0.31 s / 332 MB. "transusa … run-scene" (worse) | 0.20 s / 330 MB. "one time trans … synferum" (worst) |
+| 0.wav (literary 6.6 s) | 0.19 s / 215 MB, near-verbatim | 0.41 s / 350 MB, near-verbatim | 0.28 s / 337 MB, near-verbatim + better sentence split |
+
+Load times: A 0.6–0.8 s, B 1.3–1.5 s, C ~1.0 s. No ground-truth transcripts for
+tech1-3, so comparison is qualitative on key terms, not WER.
+
+Reading: no model dominates. B wins isolated words ("compositor", "pipe wire"
+split, email merge) but loses others ("transusa", "pipe while a") and peaks at
+**499 MB on 19 s audio — over the 300–400 MB cap**. C has the nicest punctuation
+(ITN) but the worst jargon (run-ons, stutters). A matches or beats both on tech
+terms while staying in budget on every clip. Conclusion: the gap is vocabulary,
+not capacity — address via user-owned config vocabulary, delivery, and mic.

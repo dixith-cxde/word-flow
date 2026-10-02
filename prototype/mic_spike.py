@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 MODEL_DIRS = {
     "moonshine": ROOT / "models" / "sherpa-onnx-moonshine-tiny-en-int8",
     "transducer": ROOT / "models" / "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+    "sensevoice": ROOT / "models" / "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
 }
 MODEL_FILES = {
     "moonshine": (
@@ -31,6 +32,7 @@ MODEL_FILES = {
         "tokens.txt",
     ),
     "transducer": ("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"),
+    "sensevoice": ("model.int8.onnx", "tokens.txt"),
 }
 NUM_THREADS = 4
 
@@ -41,6 +43,7 @@ def rss_mb() -> float:
 
 def create_recognizer(
     backend="moonshine",
+    model_dir=None,
     threads=NUM_THREADS,
     decoding="greedy_search",
     hotwords="",
@@ -49,7 +52,7 @@ def create_recognizer(
     bpe_vocab="",
 ) -> tuple:
     t0 = time.perf_counter()
-    model_dir = MODEL_DIRS[backend]
+    model_dir = Path(model_dir) if model_dir else MODEL_DIRS[backend]
     if backend == "moonshine":
         recognizer = sherpa_onnx.OfflineRecognizer.from_moonshine(
             preprocessor=str(model_dir / "preprocess.onnx"),
@@ -58,6 +61,15 @@ def create_recognizer(
             cached_decoder=str(model_dir / "cached_decode.int8.onnx"),
             tokens=str(model_dir / "tokens.txt"),
             num_threads=threads,
+        )
+        return recognizer, time.perf_counter() - t0
+    if backend == "sensevoice":
+        recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
+            model=str(model_dir / "model.int8.onnx"),
+            tokens=str(model_dir / "tokens.txt"),
+            num_threads=threads,
+            language="en",
+            use_itn=True,
         )
         return recognizer, time.perf_counter() - t0
     recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
@@ -157,10 +169,13 @@ def main() -> int:
     ap.add_argument("--hotwords-score", type=float, default=1.5)
     ap.add_argument("--modeling-unit", default="")
     ap.add_argument("--bpe-vocab", default="")
-    ap.add_argument("--asr-backend", default="moonshine", choices=("moonshine", "transducer"))
+    ap.add_argument(
+        "--asr-backend", default="moonshine", choices=("moonshine", "transducer", "sensevoice")
+    )
+    ap.add_argument("--model-dir", type=Path, default=None)
     args = ap.parse_args()
 
-    model_dir = MODEL_DIRS[args.asr_backend]
+    model_dir = args.model_dir or MODEL_DIRS[args.asr_backend]
     for f in MODEL_FILES[args.asr_backend]:
         if not (model_dir / f).exists():
             print(f"missing model file: {model_dir / f}", file=sys.stderr)
@@ -169,6 +184,7 @@ def main() -> int:
     print(f"RSS before load: {rss_mb():.0f} MB", flush=True)
     recognizer, t_load = create_recognizer(
         backend=args.asr_backend,
+        model_dir=args.model_dir,
         decoding=args.decoding,
         hotwords=args.hotwords,
         score=args.hotwords_score,

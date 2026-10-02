@@ -28,6 +28,8 @@ BIN_DIR="$HOME/.local/bin"
 VENV="$PREFIX/venv"
 MODEL_DIR="$PREFIX/models/moonshine-tiny-en-int8"
 MODEL_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-tiny-en-int8.tar.bz2"
+# Inner dir name inside MODEL_URL's tarball (upstream-controlled; update together).
+MODEL_SRC_DIR="sherpa-onnx-moonshine-tiny-en-int8"
 VAD_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx"
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "missing: $1 ($2)"; exit 1; }; }
@@ -61,12 +63,12 @@ if [ "$WITH_MODELS" -eq 1 ]; then
         rm "$PREFIX/moonshine.tar.bz2"
         # Integrity: extraction must yield every file the worker loads.
         for f in preprocess.onnx encode.int8.onnx uncached_decode.int8.onnx cached_decode.int8.onnx tokens.txt; do
-            [ -f "$PREFIX/models/sherpa-onnx-moonshine-tiny-en-int8/$f" ] || { echo "missing model file: $f"; exit 1; }
+            [ -f "$PREFIX/models/$MODEL_SRC_DIR/$f" ] || { echo "missing model file: $f"; exit 1; }
         done
         # MODEL_DIR may hold a partial tree from an interrupted run; clear it so
         # mv renames (GNU mv would otherwise nest the tree inside the dir).
         rm -rf "$MODEL_DIR"
-        mv "$PREFIX/models/sherpa-onnx-moonshine-tiny-en-int8" "$MODEL_DIR"
+        mv "$PREFIX/models/$MODEL_SRC_DIR" "$MODEL_DIR"
     fi
     [ -f "$PREFIX/models/silero_vad.onnx" ] || curl -fSL -o "$PREFIX/models/silero_vad.onnx" "$VAD_URL"
     mkdir -p "$HOME/.config/voxd"

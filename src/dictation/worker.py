@@ -44,6 +44,7 @@ def create_recognizer(model_dir: str, num_threads: int, args) -> object:
             model_type="nemo_transducer",
             provider="cpu",
         )
+    raise ValueError(f"unknown asr_backend: {backend!r}")
 
 
 def serve(sock_path: str, recognizer, idle_timeout: float, conn_timeout: float = 30) -> None:

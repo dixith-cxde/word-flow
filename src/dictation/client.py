@@ -29,9 +29,22 @@ def call(sock_path: str, req: dict, timeout: float = 60.0) -> dict:
         return proto.recv_json(f.readline())
 
 
+def _overlay_active() -> bool:
+    """True when the layer-shell pill service is running (it owns the UI then)."""
+    try:
+        r = subprocess.run(
+            ["systemctl", "--user", "is-active", "voxd-pill.service"],
+            capture_output=True,
+            timeout=5,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
 def _pill(show: bool) -> None:
     """Show/dismiss the Hyprland listening pill. Best-effort: never fails the command."""
-    if shutil.which("hyprctl") is None:
+    if shutil.which("hyprctl") is None or _overlay_active():
         return
     try:
         if show:

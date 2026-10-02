@@ -228,7 +228,8 @@ fi
 
 echo "== pill =="
 if [ "$HAVE_HYPRLAND" -eq 1 ]; then
-    if python3 -c "import gi; gi.require_version('Gtk', '4.0'); gi.require_version('Gtk4LayerShell', '1.0')" 2>/dev/null; then
+    PILL_CHECK="$(python3 -c "import gi; gi.require_version('Gtk', '4.0'); gi.require_version('Gtk4LayerShell', '1.0')" 2>&1)" && HAVE_PILL_DEPS=1 || HAVE_PILL_DEPS=0
+    if [ "$HAVE_PILL_DEPS" -eq 1 ]; then
         SITE="$("$VENV/bin/python" -c "import sysconfig; print(sysconfig.get_path('purelib'))")"
         cat > "$BIN_DIR/voxd-pill" <<EOF
 #!/bin/sh
@@ -248,7 +249,8 @@ EOF
         systemctl --user enable --now voxd-pill.service
         echo "Listening pill installed (Hyprland overlay, follows vox start/stop)."
     else
-        echo "pill skipped: need python3-gi + gtk4 + gtk-layer-shell (e.g. pacman -S python-gobject gtk4 gtk-layer-shell)"
+        echo "pill skipped: $PILL_CHECK"
+        echo "(need python3-gi + gtk4 + gtk-layer-shell, e.g. pacman -S python-gobject gtk4 gtk-layer-shell)"
     fi
 else
     echo "(pill is Hyprland-only; skipping)"

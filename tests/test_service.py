@@ -167,6 +167,26 @@ def test_pill_failure_never_breaks_client(monkeypatch):
     client_mod._pill(False)
 
 
+def test_pill_quiet_when_overlay_active(monkeypatch):
+    from dictation import client as client_mod
+
+    monkeypatch.setattr(client_mod.shutil, "which", lambda _: "/usr/bin/hyprctl")
+
+    class _Active:
+        returncode = 0
+
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        return _Active()
+
+    monkeypatch.setattr(client_mod.subprocess, "run", fake_run)
+    client_mod._pill(True)
+    # Only the is-active probe ran; no notify was sent (overlay owns the UI).
+    assert calls == [["systemctl", "--user", "is-active", "voxd-pill.service"]]
+
+
 def test_stop_reports_silence(monkeypatch, tmp_path):
     from dictation import client as client_mod
     from dictation import daemon as daemon_mod

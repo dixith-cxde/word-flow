@@ -4,8 +4,6 @@ Pure function with no GTK dependency so the mapping is unit-testable; ui/pill.py
 renders whatever this returns.
 """
 
-_SNIPPET_LEN = 60
-
 
 def render(event: dict) -> tuple:
     """Return (visible, style, label) for a daemon event dict."""
@@ -15,9 +13,9 @@ def render(event: dict) -> tuple:
     if name == "transcribing":
         return True, "working", "Transcribing…"
     if name == "done":
+        # Done never displays: the pill vanishes the moment transcription lands.
+        # Only failure surfaces (monochrome, auto-hidden by the pill).
         if event.get("ok"):
-            text = (event.get("text") or "").strip()
-            label = text[:_SNIPPET_LEN] + ("…" if len(text) > _SNIPPET_LEN else "")
-            return True, "done", label or "Done"
+            return False, "idle", ""
         return True, "error", "Failed"
     return False, "idle", ""

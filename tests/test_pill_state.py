@@ -11,20 +11,12 @@ def test_transcribing_state():
     assert render({"event": "transcribing"}) == (True, "working", "Transcribing…")
 
 
-def test_done_ok_with_text_snippet():
-    visible, style, label = render({"event": "done", "ok": True, "text": "Hello world"})
-    assert (visible, style) == (True, "done")
-    assert label == "Hello world"
+def test_done_ok_hides():
+    assert render({"event": "done", "ok": True, "text": "Hello world"}) == (False, "idle", "")
 
 
-def test_done_ok_truncates_long_text():
-    visible, style, label = render({"event": "done", "ok": True, "text": "x" * 100})
-    assert (visible, style) == (True, "done")
-    assert len(label) == 61 and label.endswith("…")
-
-
-def test_done_ok_empty_text():
-    assert render({"event": "done", "ok": True, "text": "   "}) == (True, "done", "Done")
+def test_done_ok_empty_text_hides():
+    assert render({"event": "done", "ok": True, "text": "   "}) == (False, "idle", "")
 
 
 def test_done_failed():

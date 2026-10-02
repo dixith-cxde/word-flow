@@ -33,26 +33,54 @@ except (ImportError, ValueError) as e:
 CSS = b"""
 window { background: transparent; }
 .pill {
-  background: linear-gradient(to bottom, rgba(26, 28, 36, 0.96), rgba(15, 17, 23, 0.96));
+  background: rgba(0, 0, 0, 0.88);
   border-radius: 999px;
   padding: 10px 22px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
-.pill label { color: #e8eaed; font-size: 14px; font-weight: 500; letter-spacing: 0.2px; }
-.pill .dot { font-size: 11px; }
-.pill.recording { border-color: rgba(255, 95, 87, 0.55); }
-.pill.recording .dot { color: #ff5f57; animation: pulse 1.1s ease-in-out infinite; }
-.pill.working { border-color: rgba(88, 166, 255, 0.45); }
-.pill.working .dot { color: #58a6ff; animation: breathe 1.6s ease-in-out infinite; }
-.pill.done { border-color: rgba(63, 185, 80, 0.55); }
-.pill.done .dot { color: #3fb950; }
-.pill.error { border-color: rgba(255, 95, 87, 0.55); }
-.pill.error .dot { color: #ff5f57; }
-@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.35; } 100% { opacity: 1; } }
-@keyframes breathe { 0% { opacity: 1; } 50% { opacity: 0.55; } 100% { opacity: 1; } }
+.pill label { color: #ffffff; font-size: 14px; font-weight: 500; letter-spacing: 0.2px; }
 """
 
 _HIDE_AFTER_S = 2
+
+
+class Wave(Gtk.DrawingArea):
+    """Animated voice bars, drawn with cairo — no image assets, monochrome."""
+
+    def __init__(self):
+        super().__init__()
+        self.set_content_width(64)
+        self.set_content_height(24)
+        self._phase = 0.0
+        self._tick_id = None
+        self.set_draw_func(self._draw, None)
+
+    def start(self) -> None:
+        if self._tick_id is None:
+            self._tick_id = self.add_tick_callback(self._on_tick)
+
+    def stop(self) -> None:
+        if self._tick_id is not None:
+            self.remove_tick_callback(self._tick_id)
+            self._tick_id = None
+
+    def _on_tick(self, _widget, _frame_clock) -> bool:
+        self._phase += 0.35
+        self.queue_draw()
+        return True
+
+    def _draw(self, _area, cr, width, height, _data) -> None:
+        import math
+
+        bars = 5
+        bar_w = 3.5
+        gap = (width - 12 - bar_w * bars) / (bars - 1)
+        cr.set_source_rgba(1, 1, 1, 0.95)
+        for i in range(bars):
+            level = abs(math.sin(self._phase + i * 0.9))
+            bar_h = 4 + level * (height - 8)
+            cr.rectangle(6 + i * (bar_w + gap), (height - bar_h) / 2, bar_w, bar_h)
+        cr.fill()
 
 
 class Pill:
@@ -63,12 +91,11 @@ class Pill:
         LayerShell.init_for_window(self.win)
         LayerShell.set_layer(self.win, LayerShell.Layer.TOP)
         # Anchor left+right with a centered child: the window spans the output
-        # width (transparent) while the pill itself stays top-center. Anchoring
-        # top-only leaves the window an arbitrary size and the pill off-center.
-        LayerShell.set_anchor(self.win, LayerShell.Edge.TOP, True)
+        # width (transparent) while the pill itself stays bottom-center.
+        LayerShell.set_anchor(self.win, LayerShell.Edge.BOTTOM, True)
         LayerShell.set_anchor(self.win, LayerShell.Edge.LEFT, True)
         LayerShell.set_anchor(self.win, LayerShell.Edge.RIGHT, True)
-        LayerShell.set_margin(self.win, LayerShell.Edge.TOP, 12)
+        LayerShell.set_margin(self.win, LayerShell.Edge.BOTTOM, 28)
         LayerShell.set_exclusive_zone(self.win, 0)
         LayerShell.set_keyboard_mode(self.win, LayerShell.KeyboardMode.NONE)
         css = Gtk.CssProvider()
@@ -79,13 +106,12 @@ class Pill:
         self.box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         self.box.add_css_class("pill")
         self.box.set_halign(Gtk.Align.CENTER)
-        self.box.set_valign(Gtk.Align.START)
-        self.dot = Gtk.Label(label="●")
-        self.dot.add_css_class("dot")
+        self.box.set_valign(Gtk.Align.END)
+        self.wave = Wave()
         self.label = Gtk.Label(label="")
         self.label.set_ellipsize(True)
         self.label.set_max_width_chars(60)
-        self.box.append(self.dot)
+        self.box.append(self.wave)
         self.box.append(self.label)
         self.win.set_child(self.box)
         self._hide_timer = None
@@ -97,17 +123,20 @@ class Pill:
             GLib.source_remove(self._hide_timer)
             self._hide_timer = None
         if not visible:
+            self.wave.stop()
             self.win.set_visible(False)
             return
         self.box.add_css_class(style)
         self.label.set_text(label)
         self.win.set_visible(True)
         self.win.present()
-        if style in ("done", "error"):
+        self.wave.start()
+        if style == "error":
             self._hide_timer = GLib.timeout_add_seconds(_HIDE_AFTER_S, self._auto_hide)
 
     def _auto_hide(self) -> bool:
         self._hide_timer = None
+        self.wave.stop()
         self.win.set_visible(False)
         return False
 

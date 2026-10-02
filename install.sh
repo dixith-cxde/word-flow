@@ -6,17 +6,21 @@ set -euo pipefail
 
 KEY="F9"
 WITH_MODELS=0
+CLEAN_MODELS=0
 
 usage() {
-    echo "Usage: install.sh [--key KEY] [--with-models]"
+    echo "Usage: install.sh [--key KEY] [--with-models] [--clean-models]"
     echo "  --key KEY       hold-to-talk key, default F9 (Hyprland) / toggle key (GNOME)"
     echo "  --with-models   download Moonshine-tiny q8 (~103 MB) + silero-vad (opt-in)"
+    echo "  --clean-models  delete retired model files (Parakeet, base, SenseVoice,"
+    echo "                  punct) from ~/.local/share/voxd/models, then exit"
 }
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --key) KEY="$2"; shift 2 ;;
         --with-models) WITH_MODELS=1; shift ;;
+        --clean-models) CLEAN_MODELS=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown arg: $1"; usage; exit 1 ;;
     esac
@@ -26,6 +30,25 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX="$HOME/.local/share/voxd"
 BIN_DIR="$HOME/.local/bin"
 VENV="$PREFIX/venv"
+# Retired model files from earlier stacks. Only these exact names are ever
+# deleted; the current Moonshine-tiny dir and silero_vad.onnx are kept.
+LEGACY_MODELS="parakeet.tar.bz2 parakeet-v3-int8 moonshine.tar.bz2 sensevoice.tar.bz2 punct.tar.bz2 sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8 sherpa-onnx-moonshine-base-en-int8 sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17 sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12"
+
+if [ "$CLEAN_MODELS" -eq 1 ]; then
+    echo "== clean retired models in $PREFIX/models =="
+    FREED=0
+    for name in $LEGACY_MODELS; do
+        target="$PREFIX/models/$name"
+        if [ -e "$target" ]; then
+            size="$(du -sb "$target" | cut -f1)"
+            FREED=$((FREED + size))
+            echo "removing $name ($(numfmt --to=iec "$size"))"
+            rm -rf "$target"
+        fi
+    done
+    echo "reclaimed $(numfmt --to=iec "$FREED")"
+    exit 0
+fi
 MODEL_DIR="$PREFIX/models/moonshine-tiny-en-int8"
 MODEL_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-tiny-en-int8.tar.bz2"
 # Inner dir name inside MODEL_URL's tarball (upstream-controlled; update together).

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Spike: transcribe mic (Enter to start/stop) or a wav file with Parakeet v3 int8.
+"""Spike: transcribe mic (Enter to start/stop) or a wav file.
 
 Usage:
     uv run --with ... (see below) / .venv/bin/python prototype/mic_spike.py --file <wav>
     .venv/bin/python prototype/mic_spike.py --mic   # asks before touching the mic
+    Backend defaults to moonshine (--asr-backend transducer for the Parakeet reference).
 """
 
 import argparse
@@ -17,7 +18,20 @@ from pathlib import Path
 import sherpa_onnx
 
 ROOT = Path(__file__).resolve().parent.parent
-MODEL_DIR = ROOT / "models" / "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
+MODEL_DIRS = {
+    "moonshine": ROOT / "models" / "sherpa-onnx-moonshine-tiny-en-int8",
+    "transducer": ROOT / "models" / "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+}
+MODEL_FILES = {
+    "moonshine": (
+        "preprocess.onnx",
+        "encode.int8.onnx",
+        "uncached_decode.int8.onnx",
+        "cached_decode.int8.onnx",
+        "tokens.txt",
+    ),
+    "transducer": ("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"),
+}
 NUM_THREADS = 4
 
 
@@ -26,6 +40,7 @@ def rss_mb() -> float:
 
 
 def create_recognizer(
+    backend="moonshine",
     threads=NUM_THREADS,
     decoding="greedy_search",
     hotwords="",
@@ -34,11 +49,22 @@ def create_recognizer(
     bpe_vocab="",
 ) -> tuple:
     t0 = time.perf_counter()
+    model_dir = MODEL_DIRS[backend]
+    if backend == "moonshine":
+        recognizer = sherpa_onnx.OfflineRecognizer.from_moonshine(
+            preprocessor=str(model_dir / "preprocess.onnx"),
+            encoder=str(model_dir / "encode.int8.onnx"),
+            uncached_decoder=str(model_dir / "uncached_decode.int8.onnx"),
+            cached_decoder=str(model_dir / "cached_decode.int8.onnx"),
+            tokens=str(model_dir / "tokens.txt"),
+            num_threads=threads,
+        )
+        return recognizer, time.perf_counter() - t0
     recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
-        encoder=str(MODEL_DIR / "encoder.int8.onnx"),
-        decoder=str(MODEL_DIR / "decoder.int8.onnx"),
-        joiner=str(MODEL_DIR / "joiner.int8.onnx"),
-        tokens=str(MODEL_DIR / "tokens.txt"),
+        encoder=str(model_dir / "encoder.int8.onnx"),
+        decoder=str(model_dir / "decoder.int8.onnx"),
+        joiner=str(model_dir / "joiner.int8.onnx"),
+        tokens=str(model_dir / "tokens.txt"),
         num_threads=threads,
         sample_rate=16000,
         feature_dim=80,
@@ -131,15 +157,18 @@ def main() -> int:
     ap.add_argument("--hotwords-score", type=float, default=1.5)
     ap.add_argument("--modeling-unit", default="")
     ap.add_argument("--bpe-vocab", default="")
+    ap.add_argument("--asr-backend", default="moonshine", choices=("moonshine", "transducer"))
     args = ap.parse_args()
 
-    for f in ("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"):
-        if not (MODEL_DIR / f).exists():
-            print(f"missing model file: {MODEL_DIR / f}", file=sys.stderr)
+    model_dir = MODEL_DIRS[args.asr_backend]
+    for f in MODEL_FILES[args.asr_backend]:
+        if not (model_dir / f).exists():
+            print(f"missing model file: {model_dir / f}", file=sys.stderr)
             return 1
 
     print(f"RSS before load: {rss_mb():.0f} MB", flush=True)
     recognizer, t_load = create_recognizer(
+        backend=args.asr_backend,
         decoding=args.decoding,
         hotwords=args.hotwords,
         score=args.hotwords_score,

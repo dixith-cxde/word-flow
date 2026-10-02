@@ -49,8 +49,8 @@ class Wave(Gtk.DrawingArea):
 
     def __init__(self):
         super().__init__()
-        self.set_content_width(64)
-        self.set_content_height(24)
+        self.set_content_width(72)
+        self.set_content_height(22)
         self._phase = 0.0
         self._tick_id = None
         self.set_draw_func(self._draw, None)
@@ -65,22 +65,37 @@ class Wave(Gtk.DrawingArea):
             self._tick_id = None
 
     def _on_tick(self, _widget, _frame_clock) -> bool:
-        self._phase += 0.35
+        self._phase += 0.12
         self.queue_draw()
         return True
 
     def _draw(self, _area, cr, width, height, _data) -> None:
         import math
 
-        bars = 5
-        bar_w = 3.5
-        gap = (width - 12 - bar_w * bars) / (bars - 1)
-        cr.set_source_rgba(1, 1, 1, 0.95)
+        bars = 7
+        bar_w = 2.5
+        gap = (width - 16 - bar_w * bars) / (bars - 1)
+        cr.set_source_rgba(1, 1, 1, 0.92)
         for i in range(bars):
-            level = abs(math.sin(self._phase + i * 0.9))
-            bar_h = 4 + level * (height - 8)
-            cr.rectangle(6 + i * (bar_w + gap), (height - bar_h) / 2, bar_w, bar_h)
+            level = abs(math.sin(self._phase + i * 0.7))
+            bar_h = 5 + level * (height - 12)
+            x = 8 + i * (bar_w + gap)
+            self._round_bar(cr, x, (height - bar_h) / 2, bar_w, bar_h)
         cr.fill()
+
+    @staticmethod
+    def _round_bar(cr, x, y, w, h) -> None:
+        r = min(w / 2, 2.0)
+        cr.move_to(x + r, y)
+        cr.line_to(x + w - r, y)
+        cr.arc(x + w - r, y + r, r, -1.5708, 0)
+        cr.line_to(x + w, y + h - r)
+        cr.arc(x + w - r, y + h - r, r, 0, 1.5708)
+        cr.line_to(x + r, y + h)
+        cr.arc(x + r, y + h - r, r, 1.5708, 3.1416)
+        cr.line_to(x, y + r)
+        cr.arc(x + r, y + r, r, 3.1416, 4.7124)
+        cr.close_path()
 
 
 class Pill:
@@ -88,6 +103,10 @@ class Pill:
         self.win = Gtk.Window()
         self.win.set_decorated(False)
         self.win.set_resizable(False)
+        # Belt and suspenders with the layer anchors below: if the surface ever
+        # falls back to a normal window, it still centers rather than corners.
+        self.win.set_halign(Gtk.Align.CENTER)
+        self.win.set_valign(Gtk.Align.END)
         LayerShell.init_for_window(self.win)
         LayerShell.set_layer(self.win, LayerShell.Layer.TOP)
         # Anchor left+right with a centered child: the window spans the output

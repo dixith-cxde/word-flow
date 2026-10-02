@@ -81,7 +81,7 @@ SPOKEN_PUNCT = {
     "dot": ".",
 }
 
-_DOMAIN_RE = re.compile(r"\b([A-Za-z0-9-]+) \. (com|org|net|io|ai|dev)\b", re.IGNORECASE)
+_DOMAIN_RE = re.compile(r"\b([A-Za-z0-9-]+)\. (com|org|net|io|ai|dev)\b", re.IGNORECASE)
 
 
 def join_domains(text: str) -> str:

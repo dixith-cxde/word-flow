@@ -34,6 +34,9 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX="$HOME/.local/share/voxd"
 BIN_DIR="$HOME/.local/bin"
 VENV="$PREFIX/venv"
+# System interpreter for the pill (must match the wrapper below, not PATH).
+PY3="/usr/bin/python3"
+[ -x "$PY3" ] || PY3="python3"
 # Retired model files from earlier stacks. Only these exact names are ever
 # deleted; the current Moonshine-tiny dir and silero_vad.onnx are kept.
 LEGACY_MODELS="parakeet.tar.bz2 parakeet-v3-int8 moonshine.tar.bz2 sensevoice.tar.bz2 punct.tar.bz2 sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8 sherpa-onnx-moonshine-base-en-int8 sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17 sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12"
@@ -228,7 +231,7 @@ fi
 
 echo "== pill =="
 if [ "$HAVE_HYPRLAND" -eq 1 ]; then
-    PILL_CHECK="$(python3 -c "import gi; gi.require_version('Gtk', '4.0'); gi.require_version('Gtk4LayerShell', '1.0')" 2>&1)" && HAVE_PILL_DEPS=1 || HAVE_PILL_DEPS=0
+    PILL_CHECK="$("$PY3" -c "import gi; gi.require_version('Gtk', '4.0'); gi.require_version('Gtk4LayerShell', '1.0')" 2>&1)" && HAVE_PILL_DEPS=1 || HAVE_PILL_DEPS=0
     install_pill() {
         SITE="$("$VENV/bin/python" -c "import sysconfig; print(sysconfig.get_path('purelib'))")"
         cat > "$BIN_DIR/voxd-pill" <<EOF

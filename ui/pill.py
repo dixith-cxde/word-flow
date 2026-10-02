@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""voxd listening pill: layer-shell top-center overlay driven by daemon events.
+"""voxd listening pill: layer-shell bottom-center overlay driven by daemon events.
 
 System Python (gi/GTK4 from distro packages, not the voxd venv). Holds one
 `subscribe` connection; reconnects with backoff across daemon restarts.
@@ -33,7 +33,7 @@ except (ImportError, ValueError) as e:
 CSS = b"""
 window { background: transparent; }
 .pill {
-  background: rgba(0, 0, 0, 0.88);
+  background: #000000;
   border-radius: 999px;
   padding: 10px 22px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -104,17 +104,22 @@ class Pill:
         self.win.set_decorated(False)
         self.win.set_resizable(False)
         # Belt and suspenders with the layer anchors below: if the surface ever
-        # falls back to a normal window, it still centers rather than corners.
+        # falls back to a normal window, it still sits bottom-center.
         self.win.set_halign(Gtk.Align.CENTER)
-        self.win.set_valign(Gtk.Align.CENTER)
+        self.win.set_valign(Gtk.Align.END)
         LayerShell.init_for_window(self.win)
         LayerShell.set_layer(self.win, LayerShell.Layer.TOP)
-        # Anchor all edges: the window spans the output (transparent) while the
-        # pill itself sits dead-center via the child alignment below.
-        LayerShell.set_anchor(self.win, LayerShell.Edge.TOP, True)
+        # Bottom-center: anchor the bottom edge only. A single-edge layer
+        # surface is centered along that edge by the compositor; anchoring
+        # left+right does not reliably stretch (observed 299px surface hugging
+        # the left on Hyprland), so don't depend on it.
+        LayerShell.set_anchor(self.win, LayerShell.Edge.TOP, False)
         LayerShell.set_anchor(self.win, LayerShell.Edge.BOTTOM, True)
-        LayerShell.set_anchor(self.win, LayerShell.Edge.LEFT, True)
-        LayerShell.set_anchor(self.win, LayerShell.Edge.RIGHT, True)
+        LayerShell.set_anchor(self.win, LayerShell.Edge.LEFT, False)
+        LayerShell.set_anchor(self.win, LayerShell.Edge.RIGHT, False)
+        # Offset above the screen edge via the layer margin (widget margins
+        # only pad inside the surface, they don't move it).
+        LayerShell.set_margin(self.win, LayerShell.Edge.BOTTOM, 48)
         LayerShell.set_exclusive_zone(self.win, 0)
         LayerShell.set_keyboard_mode(self.win, LayerShell.KeyboardMode.NONE)
         css = Gtk.CssProvider()

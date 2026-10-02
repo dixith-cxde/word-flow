@@ -34,7 +34,7 @@ VENV="$PREFIX/venv"
 # deleted; the current Moonshine-tiny dir and silero_vad.onnx are kept.
 LEGACY_MODELS="parakeet.tar.bz2 parakeet-v3-int8 moonshine.tar.bz2 sensevoice.tar.bz2 punct.tar.bz2 sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8 sherpa-onnx-moonshine-base-en-int8 sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17 sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12"
 
-if [ "$CLEAN_MODELS" -eq 1 ]; then
+clean_legacy_models() {
     echo "== clean retired models in $PREFIX/models =="
     FREED=0
     for name in $LEGACY_MODELS; do
@@ -47,6 +47,10 @@ if [ "$CLEAN_MODELS" -eq 1 ]; then
         fi
     done
     echo "reclaimed $(numfmt --to=iec "$FREED")"
+}
+
+if [ "$CLEAN_MODELS" -eq 1 ]; then
+    clean_legacy_models
     exit 0
 fi
 MODEL_DIR="$PREFIX/models/moonshine-tiny-en-int8"
@@ -80,6 +84,8 @@ export PATH="$BIN_DIR:$PATH"
 if [ "$WITH_MODELS" -eq 1 ]; then
     echo "== models (~110 MB, official sherpa-onnx releases) =="
     mkdir -p "$PREFIX/models"
+    # A reinstall over an older stack must not leave retired models behind.
+    clean_legacy_models
     if [ ! -f "$MODEL_DIR/encode.int8.onnx" ]; then
         curl -fSL -o "$PREFIX/moonshine.tar.bz2" "$MODEL_URL"
         tar -xf "$PREFIX/moonshine.tar.bz2" -C "$PREFIX/models"
@@ -108,7 +114,17 @@ echo "== service =="
 mkdir -p "$HOME/.config/systemd/user"
 sed "s|ExecStart=.*|ExecStart=$BIN_DIR/voxd|" "$REPO_DIR/systemd/voxd.service" > "$HOME/.config/systemd/user/voxd.service"
 systemctl --user daemon-reload
-systemctl --user enable --now voxd.service
+# Restart (not enable --now, which is a no-op on an already-active service and
+# would leave the previous build running).
+systemctl --user enable voxd.service
+systemctl --user restart voxd.service
+# The service binds its socket asynchronously; wait for it before checking status.
+SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/voxd.sock"
+for _ in $(seq 1 100); do
+    [ -S "$SOCK" ] && break
+    sleep 0.2
+done
+[ -S "$SOCK" ] || { echo "voxd socket never appeared; see journalctl --user -u voxd.service"; exit 1; }
 "$BIN_DIR/vox" status
 
 echo "== keybind =="

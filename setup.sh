@@ -229,7 +229,7 @@ fi
 echo "== pill =="
 if [ "$HAVE_HYPRLAND" -eq 1 ]; then
     PILL_CHECK="$(python3 -c "import gi; gi.require_version('Gtk', '4.0'); gi.require_version('Gtk4LayerShell', '1.0')" 2>&1)" && HAVE_PILL_DEPS=1 || HAVE_PILL_DEPS=0
-    if [ "$HAVE_PILL_DEPS" -eq 1 ]; then
+    install_pill() {
         SITE="$("$VENV/bin/python" -c "import sysconfig; print(sysconfig.get_path('purelib'))")"
         cat > "$BIN_DIR/voxd-pill" <<EOF
 #!/bin/sh
@@ -248,9 +248,25 @@ EOF
         systemctl --user daemon-reload
         systemctl --user enable --now voxd-pill.service
         echo "Listening pill installed (Hyprland overlay, follows vox start/stop)."
+    }
+    if [ "$HAVE_PILL_DEPS" -eq 1 ]; then
+        install_pill
     else
         echo "pill skipped: $PILL_CHECK"
-        echo "(need python3-gi + gtk4 + gtk-layer-shell, e.g. pacman -S python-gobject gtk4 gtk-layer-shell)"
+        echo "(needs: python3-gi + gtk4 + gtk-layer-shell)"
+        answer="n"
+        if command -v pacman >/dev/null 2>&1 && [ -t 0 ]; then
+            read -r -p "Install system packages now (sudo pacman -S)? [y/N] " answer
+        elif ! command -v pacman >/dev/null 2>&1; then
+            echo "no pacman found; install your distro's python3-gi + gtk4 + gtk-layer-shell equivalent"
+        else
+            echo "(non-interactive: skipping; install python-gobject gtk4 gtk-layer-shell manually)"
+        fi
+        case "$answer" in
+            [Yy]*)
+                sudo pacman -S --needed python-gobject gtk4 gtk-layer-shell && install_pill
+                ;;
+        esac
     fi
 else
     echo "(pill is Hyprland-only; skipping)"

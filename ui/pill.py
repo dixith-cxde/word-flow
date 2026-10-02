@@ -49,7 +49,7 @@ class Wave(Gtk.DrawingArea):
 
     def __init__(self):
         super().__init__()
-        self.set_content_width(72)
+        self.set_content_width(60)
         self.set_content_height(22)
         self._phase = 0.0
         self._tick_id = None
@@ -72,14 +72,14 @@ class Wave(Gtk.DrawingArea):
     def _draw(self, _area, cr, width, height, _data) -> None:
         import math
 
-        bars = 7
-        bar_w = 2.5
-        gap = (width - 16 - bar_w * bars) / (bars - 1)
+        bars = 9
+        bar_w = 2.0
+        gap = (width - 12 - bar_w * bars) / (bars - 1)
         cr.set_source_rgba(1, 1, 1, 0.92)
         for i in range(bars):
             level = abs(math.sin(self._phase + i * 0.7))
-            bar_h = 5 + level * (height - 12)
-            x = 8 + i * (bar_w + gap)
+            bar_h = 4 + level * (height - 10)
+            x = 6 + i * (bar_w + gap)
             self._round_bar(cr, x, (height - bar_h) / 2, bar_w, bar_h)
         cr.fill()
 
@@ -106,15 +106,15 @@ class Pill:
         # Belt and suspenders with the layer anchors below: if the surface ever
         # falls back to a normal window, it still centers rather than corners.
         self.win.set_halign(Gtk.Align.CENTER)
-        self.win.set_valign(Gtk.Align.END)
+        self.win.set_valign(Gtk.Align.CENTER)
         LayerShell.init_for_window(self.win)
         LayerShell.set_layer(self.win, LayerShell.Layer.TOP)
-        # Anchor left+right with a centered child: the window spans the output
-        # width (transparent) while the pill itself stays bottom-center.
+        # Anchor all edges: the window spans the output (transparent) while the
+        # pill itself sits dead-center via the child alignment below.
+        LayerShell.set_anchor(self.win, LayerShell.Edge.TOP, True)
         LayerShell.set_anchor(self.win, LayerShell.Edge.BOTTOM, True)
         LayerShell.set_anchor(self.win, LayerShell.Edge.LEFT, True)
         LayerShell.set_anchor(self.win, LayerShell.Edge.RIGHT, True)
-        LayerShell.set_margin(self.win, LayerShell.Edge.BOTTOM, 28)
         LayerShell.set_exclusive_zone(self.win, 0)
         LayerShell.set_keyboard_mode(self.win, LayerShell.KeyboardMode.NONE)
         css = Gtk.CssProvider()
@@ -122,10 +122,10 @@ class Pill:
         Gtk.StyleContext.add_provider_for_display(
             self.win.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
-        self.box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        self.box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.box.add_css_class("pill")
         self.box.set_halign(Gtk.Align.CENTER)
-        self.box.set_valign(Gtk.Align.END)
+        self.box.set_valign(Gtk.Align.CENTER)
         self.wave = Wave()
         self.label = Gtk.Label(label="")
         self.label.set_ellipsize(True)

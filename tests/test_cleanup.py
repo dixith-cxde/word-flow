@@ -6,6 +6,7 @@ from dictation.cleanup import (
     clean,
     collapse_repeats,
     expand_snippets,
+    join_domains,
     normalize_spoken,
     remove_fillers,
     tidy_spacing,
@@ -101,5 +102,11 @@ def test_spoken_punctuation_case_insensitive():
 
 
 def test_clean_applies_spoken_punctuation():
-    assert clean("call mom dot com") == "Call mom. com"
+    assert clean("call mom dot com") == "Call mom.com"
     assert clean("are you coming question mark") == "Are you coming?"
+
+
+def test_join_domains():
+    assert join_domains("mail example. com today") == "mail example.com today"
+    assert join_domains("see my site. io now") == "see my site.io now"
+    assert clean("send it to mike at example dot com") == "Send it to mike at example.com"

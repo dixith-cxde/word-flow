@@ -81,6 +81,17 @@ SPOKEN_PUNCT = {
     "dot": ".",
 }
 
+_DOMAIN_RE = re.compile(r"\b([A-Za-z0-9-]+) \. (com|org|net|io|ai|dev)\b", re.IGNORECASE)
+
+
+def join_domains(text: str) -> str:
+    """Glue dictated domains ("example. com" -> "example.com").
+
+    normalize_spoken() leaves a space after the dot; tidy_spacing() only strips
+    the space before it. This folds the remainder for common TLDs.
+    """
+    return _DOMAIN_RE.sub(r"\1.\2", text)
+
 
 def normalize_spoken(text: str) -> str:
     """Map dictated punctuation words to marks ("dot" -> "."), longest cue first.
@@ -100,11 +111,12 @@ def clean(
     dictionary: dict[str, str] | None = None,
     snippets: dict[str, str] | None = None,
 ) -> str:
-    """Full pipeline: fillers -> repeats -> spoken punct -> dict -> snippets -> tidy -> case."""
+    """Cleanup pipeline (fillers, repeats, spoken punct, tidy, domains, case)."""
     text = remove_fillers(text)
     text = collapse_repeats(text)
     text = normalize_spoken(text)
     text = apply_dictionary(text, dictionary or {})
     text = expand_snippets(text, snippets or {})
     text = tidy_spacing(text)
+    text = join_domains(text)
     return capitalize_first(text)
